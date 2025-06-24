@@ -53,7 +53,19 @@ The script prints fit diagnostics and pops up three plots:
 ## Workflow in *nitrotest.jl*
 
 1. **Topology** – generate *(S = 100, C = 0.02)* niche model.  
-2. **True diets** – `Q_true = quantitativeweb(A; alpha = 0.5)`.  
+2. **True diets** – `Q_true = quantitativeweb(A; alpha = 0.5)`
+
+   The keyword `alpha` sets the concentration parameter of the symmetric
+   Dirichlet used to draw each consumer’s diet column:
+
+   | `alpha` value | diet breadth generated | ecological interpretation |
+   |---------------|------------------------|---------------------------|
+   | `alpha ≪ 1` (e.g. 0.05) | long-tailed: one or two prey dominate, many near-zero links | strong specialists |
+   | `alpha = 1`  | “uninformative” prior—every possible composition is equally likely | mix of specialists & generalists |
+   | `alpha > 1` (e.g. 5)  | weights cluster near `1 / (# prey)` | true generalists with even diets |
+
+   In the demo we pick `alpha = 0.5`, so most consumers have a favourite prey
+   but still include a few minor items in their diet.  
 3. **Isotopes** – convert `TrophInd(Q_true)` to δ¹⁵N using Δ¹⁵N = 3.5 ‰.  
 4. **Estimation** – call `estimate_Q_sa(A_bool, d15N_true)` to obtain **Q_est**.  
 5. **Diagnostics** – plots + `evaluate_Q(Q_true, Q_est)` summary metrics.
