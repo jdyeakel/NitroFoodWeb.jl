@@ -38,7 +38,7 @@ p_a = heatmap(A);
 # alpha >> 1 ~ diets forced to equal weights
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
-Q_true = quantitativeweb(A; alpha=5)
+Q_true = quantitativeweb(A; alpha=1)
 p_q = heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
@@ -66,14 +66,26 @@ d15N_true = ((ftl_true .- 1) .* ΔTN);
 # 6) continue the process until we minimize the error and have produced a 'best guess' Q_est
 
 
+# Specify known links using one of the following methods:
+# skew = :rand; 1. Collect every non-zero link in Q_prior. 2. Draw pct × (# links) without replacement using sample.
+# skew = :high; 1. Rank all links by descending weight. 2. Pick the first pct × (# links) of that sorted list.
+# skew = :percol; 1. For each consumer j: find its prey, sort them by weight, and keep the top ⌈pct·(# total links)/S⌉ prey (or all prey if fewer). 2. Pool those top-k sets across consumers. 3. Shuffle the pooled list, then trim to the global quota pct × (# links).
+
+known_mask = select_known_links(Q_true; pct = 0.0, skew = :high)
+# heatmap(known_mask)
+
 ###############################################################
 # 4.  Estimate Q with simulated annealing
 ###############################################################
-Q_est, err_trace = estimate_Q_sa(A_bool, d15N_true;
-                                 ΔTN     = ΔTN,
-                                 alpha0  = 1.0,    # unbiased starting guess
-                                 steps   = 10_000,
-                                 wiggle  = 0.05)
+Q_est, tr  = estimate_Q_sa(A_bool, 
+                        d15N_true;
+                        ΔTN     = ΔTN,
+                        known_mask = known_mask,  # true/false links to lock
+                        Q_known    = Q_true, # values for the locked links
+                        alpha0 = 1.0, 
+                        steps = 15_000,
+                        wiggle  = 0.2)
+
 
 plot(err_trace)
 
@@ -83,15 +95,37 @@ ftl_est = TrophInd(Q_est)
 scatter(ftl_true, ftl_est; ms=3, xlabel="observed TL", ylabel="estimated TL")
 plot!([minimum(ftl_true), maximum(ftl_true)], [minimum(ftl_true), maximum(ftl_true)]; lc=:red, l=:dash, label="1:1")
 
+#Plot Q accuracy with known/unknown links ID'd
 
-scatter(Q_true[Q_true .> 0], Q_est[Q_true .> 0]; ms=3, α=0.6,
-        xlabel="true weight", ylabel="estimated weight",
-        title="Per-link comparison", label=:none,
-        xscale=:log10,
-        yscale=:log10,
-        xlims=[0.01,1.1],
-        ylims=[0.01,1.1])
-plot!([10^-10, maximum(Q_true)], [10^-10, maximum(Q_true)]; lc=:red, l=:dash, label=:none)
+# flatten matrices and collect indices ------------------------------------
+true_vec   = Q_true[Q_true .> 0]               # all non-zero true weights
+est_vec    = Q_est[Q_true .> 0]                # estimated counterparts
+known_vec  = known_mask[Q_true .> 0]           # Boolean mask in same order
+
+# split into two groups ----------------------------------------------------
+idx_known     = findall(known_vec)
+idx_unknown   = findall(.!known_vec)
+
+# main scatter -------------------------------------------------------------
+scatter(true_vec[idx_unknown], est_vec[idx_unknown];
+        ms      = 3,  α = 0.6,
+        xscale  = :log10, yscale = :log10,
+        xlabel  = "true weight",
+        ylabel  = "estimated weight",
+        title   = "Per-link comparison",
+        xlims   = (0.01, 1.1),
+        ylims   = (0.01, 1.1),
+        label   = "free links")
+
+# overlay known links ------------------------------------------------------
+scatter!(true_vec[idx_known], est_vec[idx_known];
+         ms = 5, mc = :orange, markerstrokecolor = :black,
+         label = "locked links")
+
+# 1:1 reference line -------------------------------------------------------
+plot!([1e-10, maximum(true_vec)], [1e-10, maximum(true_vec)];
+      lc = :red, l = :dash, label = "1 : 1")
+
 
 #Print different stats on Q_est accuracy
 stats = evaluate_Q(Q_true, Q_est)

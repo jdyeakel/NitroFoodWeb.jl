@@ -67,6 +67,32 @@ The script prints fit diagnostics and pops up three plots:
    In the demo we pick `alpha = 0.5`, so most consumers have a favourite prey
    but still include a few minor items in their diet.  
 3. **Isotopes** – convert `TrophInd(Q_true)` to δ¹⁵N using Δ¹⁵N = 3.5 ‰.  
+4. **Known Links** - Locking “known” diet links
+
+    Empirical data (stomach contents, targeted isotope studies, …) often tell us a subset of feeding interactions with high confidence.  
+    You can pass that information to the optimiser through a **Boolean mask** built by `select_known_links`.
+
+    ```julia
+    # pick 20 % of links to lock, biased toward strong links within each consumer
+    known_mask = select_known_links(Q_true; pct = 0.20, skew = :percol)
+
+    # run the annealer, honouring those fixed links
+    Q̂, trace = estimate_Q_sa(
+                A_bool, d15N_obs;
+                known_mask = known_mask,
+                Q_known    = Q_true)   # pass true weights if you have them
+
+    How the skew argument chooses links
+
+    skew value	selection rule	randomness?	when to use
+    :rand	Pick pct × (# links) uniformly from all non-zero (Q_{ij}).	Yes (different mask each run unless you fix rng).	Knowledge is scattered and not weight-dependent.
+    :high	Rank every link by descending weight; keep the top fraction.	No (deterministic).	Field data cover the dominant prey items.
+    :percol	For each consumer j:1 . keep its top k prey where k = ⌈pct·(# links)/S⌉.2 . Pool those links across consumers.3 . Shuffle the pool; keep the first pct × (# links) entries.	Yes, until the quota exceeds the pool size, in which case all pooled links are kept and the result becomes deterministic.	You have consumer-balanced information (e.g., each predator’s main prey studied).
+
+    Set pct = 0.0 to run the optimiser with no pre-locked links (current default).
+
+    known_mask = select_known_links(Q_true; pct = 0.0, skew = :high)
+    heatmap(known_mask)   # visualise which links are fixed
 4. **Estimation** – call `estimate_Q_sa(A_bool, d15N_true)` to obtain **Q_est**.  
 5. **Diagnostics** – plots + `evaluate_Q(Q_true, Q_est)` summary metrics.
 
