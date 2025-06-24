@@ -12,12 +12,21 @@ pattern.
 
 ---
 
-## Quick start
+## Quick Start
 
-```bash
-julia --project -e 'using Pkg; Pkg.instantiate()'
-julia --project nitrotest.jl
-```
+1. **Clone the repo**
+
+   ```bash
+   git clone https://github.com/jdyeakel/NitroFoodWeb.git
+   cd NitroFoodWeb
+   # Launch Julia in project mode and instantiate
+    julia --project -e '
+        using Pkg
+        Pkg.instantiate()     # downloads Distributions, DataFrames, Plots, …
+    '
+    julia --project nitrotest.jl
+    ```
+
 
 The script prints fit diagnostics and pops up three plots:
 
