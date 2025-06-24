@@ -27,9 +27,10 @@ A_bool = A .> 0
 tl = TrophInd(A)
 # Sort by trophic level
 tlsp = sortperm(tl); 
-#Redefine sorted list/matrix
+#Reorder sorted list/matrices for analysis/presentation
 tl = tl[tlsp];
-A = adjmatrix[tlsp,tlsp];
+A = A[tlsp,tlsp];
+A_bool = A_bool[tlsp,tlsp];
 # Plot adjacency matrix
 p_a = heatmap(A);
 
@@ -37,7 +38,7 @@ p_a = heatmap(A);
 # alpha >> 1 ~ diets forced to equal weights
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
-Q_true = quantitativeweb(A; alpha=0.5)
+Q_true = quantitativeweb(A; alpha=5)
 p_q = heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
