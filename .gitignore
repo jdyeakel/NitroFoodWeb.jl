@@ -1,0 +1,8 @@
+# ─── Julia artifacts ─────────────────────────────────────────────
+# Keep Project.toml; ignore per-machine & build products
+.artifacts/
+.julia/
+# ─── VS Code ─────────────────────────────────────────────────────
+.vscode/
+# ─── OS cruft ────────────────────────────────────────────────────
+.DS_Store
