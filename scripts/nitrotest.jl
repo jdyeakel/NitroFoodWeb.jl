@@ -71,7 +71,11 @@ d15N_true = ((ftl_true .- 1) .* ΔTN);
 # skew = :high; 1. Rank all links by descending weight. 2. Pick the first pct × (# links) of that sorted list.
 # skew = :percol; 1. For each consumer j: find its prey, sort them by weight, and keep the top ⌈pct·(# total links)/S⌉ prey (or all prey if fewer). 2. Pool those top-k sets across consumers. 3. Shuffle the pooled list, then trim to the global quota pct × (# links).
 
-known_mask = select_known_links(Q_true; pct = 0.0, skew = :high)
+###############################################################
+# 3.  Lock in known links ~ not sure this works 100%
+###############################################################
+
+known_mask = select_known_links(Q_true; pct = 0.25, skew = :percol)
 # heatmap(known_mask)
 
 ###############################################################
@@ -84,10 +88,10 @@ Q_est, tr  = estimate_Q_sa(A_bool,
                         Q_known    = Q_true, # values for the locked links
                         alpha0 = 1.0, 
                         steps = 15_000,
-                        wiggle  = 0.2)
+                        wiggle  = 0.05)
 
 
-plot(err_trace)
+plot(err_trace,yscale=:log10)
 
 ftl_est = TrophInd(Q_est)
 @show cor(ftl_est, ftl_true)^2        # should be ≥ 0.99

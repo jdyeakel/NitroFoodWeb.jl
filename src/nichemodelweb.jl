@@ -1,8 +1,8 @@
-function nichemodelweb(S,C) 
+function nichemodelweb(S,C; rng = Random.GLOBAL_RNG) 
     
     
     #list of random niche values
-    n = sort(rand(S));
+    n = sort(rand(rng, S));
     
     #Define beta distribution
     a = 1;
@@ -10,10 +10,10 @@ function nichemodelweb(S,C)
     bdist = Beta(a,b);
     
     #range
-    r = n.*rand(bdist,S);
+    r = n .* rand(rng, bdist, S);
     
     #center of range
-    c = rand.(Uniform.(r/2,n));
+    c = rand.(rng, Uniform.(r/2, n));
     
     #Find species that fall within the range of each other
     prey = Array{Array{Int64}}(undef,S);
