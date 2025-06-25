@@ -28,24 +28,22 @@ function estimate_Q_sa(
     # ------------------------------------------------------------------
     Q = quantitativeweb(A; alpha = alpha0, rng = rng)
 
-    # overwrite with supplied true values, if any ----------------------
     if Q_known !== nothing
         Q[known_mask] .= Q_known[known_mask]
     end
 
-    # renormalise every consumer column so it still sums to 1 ----------
+    # renormalise every consumer column so it still sums to 1
     for j in 1:S
         locked = known_mask[:, j]
         free   = A[:, j] .& .!locked
         locked_sum = sum(Q[locked, j])
-        share      = max(ϵ, 1 - locked_sum)          # never negative
+        share      = max(ϵ, 1 - locked_sum)
 
         if any(free)
-            Q[free, j] ./= sum(Q[free, j])           # rescale to 1
-            Q[free, j] .*= share
+            Qfree = Q[free, j] ./ sum(Q[free, j])     # safe (free non-empty)
+            Q[free, j] .= Qfree .* share
         else
-            # all prey locked – renormalise locked slice to 1
-            Q[locked, j] ./= locked_sum
+            Q[locked, j] ./= locked_sum               # whole column locked
         end
     end
 
@@ -55,23 +53,13 @@ function estimate_Q_sa(
     ftl_obs = 1 .+ d15N_obs ./ ΔTN
     sse(Qm) = sum((trophic_levels(Qm) .- ftl_obs).^2)
 
-    # function sse(Qm)
-    #     # replicate the trimming rule: keep nodes with at least one in‐ or out‐link
-    #     deg  = vec(sum(Qm; dims = 1)) .+ vec(sum(Qm; dims = 2))
-    #     keep = findall(!iszero, deg)              # indices trophic_levels will keep
-
-    #     t    = trophic_levels(Qm)                       # length == length(keep)
-    #     return sum((t .- ftl_obs[keep]).^2)       # match lengths
-    # end
-
-    err        = sse(Q)
-    best_err   = err
-    trace      = Float64[err]
-
-    free_cols  = [j for j in 1:S if any(A[:, j] .& .!known_mask[:, j])]
+    err      = sse(Q)
+    best_err = err
+    trace    = Float64[err]
+    free_cols = [j for j in 1:S if any(A[:, j] .& .!known_mask[:, j])]
 
     # ------------------------------------------------------------------
-    # 2. adaptive T₀ (70 % accept for median uphill move)
+    # 2. adaptive T₀
     # ------------------------------------------------------------------
     T = T0_user === nothing ? begin
         Δs = Float64[]
@@ -91,30 +79,28 @@ function estimate_Q_sa(
     # ------------------------------------------------------------------
     for k in 1:steps
         j    = rand(rng, free_cols)
-        prey = findall(A[:, j] .& .!known_mask[:, j])  # editable cells
+        prey = findall(A[:, j] .& .!known_mask[:, j])   # editable links
+        isempty(prey) && continue                      # safety guard
 
-        q_old = copy(Q[prey, j])
-        Q[prey, j] .= rand(rng, Dirichlet((q_old .+ ϵ)/wiggle))
+        q_old  = copy(Q[prey, j])
 
-        # renormalise free slice only
-        share = 1 - sum(Q[known_mask[:, j], j])   # residual mass in this column
-        share = max(ϵ, share)                    # clamp to a small positive value
+        # ▼ robust Dirichlet proposal with clamping + safe renorm
+        Qprop  = rand(rng, Dirichlet((q_old .+ ϵ) / wiggle))
+        Qprop .= max.(Qprop, ϵ)                         # no zeros
+        den    = sum(Qprop)
+        den == 0 && (Qprop .= ϵ; den = ϵ*length(prey))  # avoid NaN
+        Qprop ./= den
 
-        if isempty(prey) || share ≤ ϵ            # no editable cells or nothing to allocate
-            continue                             # skip to next iteration
-        end
+        share  = max(ϵ, 1 - sum(Q[known_mask[:, j], j]))  # residual mass
+        Qprop .*= share                                   # scale to column
 
-        Q[prey, j] .= max.(Q[prey, j], ϵ)
-        Q[prey, j] ./= sum(Q[prey, j])
-        Q[prey, j] .*= share
-
-        err_new = sse(Q)
+        Q[prey, j] .= Qprop
+        err_new     = sse(Q)
 
         if err_new < err || rand(rng) < exp(-(err_new - err)/T)
-            err = err_new
-            best_err = min(best_err, err)
+            err = err_new;  best_err = min(best_err, err)
         else
-            Q[prey, j] .= q_old
+            Q[prey, j] .= q_old                           # rollback
         end
 
         push!(trace, best_err)
