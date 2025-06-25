@@ -37,10 +37,15 @@ function estimate_Q_sa(
     for j in 1:S
         locked = known_mask[:, j]
         free   = A[:, j] .& .!locked
-        share  = 1 - sum(Q[locked, j])
+        locked_sum = sum(Q[locked, j])
+        share      = max(ϵ, 1 - locked_sum)          # never negative
+
         if any(free)
-            Q[free, j] ./= sum(Q[free, j])
+            Q[free, j] ./= sum(Q[free, j])           # rescale to 1
             Q[free, j] .*= share
+        else
+            # all prey locked – renormalise locked slice to 1
+            Q[locked, j] ./= locked_sum
         end
     end
 
@@ -83,7 +88,13 @@ function estimate_Q_sa(
         Q[prey, j] .= rand(rng, Dirichlet((q_old .+ ϵ)/wiggle))
 
         # renormalise free slice only
-        share = 1 - sum(Q[known_mask[:, j], j])
+        share = 1 - sum(Q[known_mask[:, j], j])   # residual mass in this column
+        share = max(ϵ, share)                    # clamp to a small positive value
+
+        if isempty(prey) || share ≤ ϵ            # no editable cells or nothing to allocate
+            continue                             # skip to next iteration
+        end
+
         Q[prey, j] .= max.(Q[prey, j], ϵ)
         Q[prey, j] ./= sum(Q[prey, j])
         Q[prey, j] .*= share
