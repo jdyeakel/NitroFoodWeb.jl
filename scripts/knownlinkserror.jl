@@ -170,10 +170,11 @@ end
 df  = DataFrame(pct = pct_v, rep = rep_v, R2 = r2_v);
 df_summary = combine(DataFrames.groupby(df, :pct)) do sub
     (; mean_R2 = mean(sub.R2), sd_R2 = std(sub.R2))
-end
+end;
+println("\nMean ± SD of R² across replicates")
+show(df_summary, allrows = true, allcols = true)
 
 UnicodePlots.lineplot(df_summary[!,:mean_R2])
 
-println("\nMean ± SD of R² across replicates")
-show(df_summary, allrows = true, allcols = true)
+
 
