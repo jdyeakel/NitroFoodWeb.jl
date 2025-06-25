@@ -23,7 +23,12 @@ function estimate_Q_sa(
 
     S, ϵ = size(A, 1), 1e-12
 
-    scrub!(v) = replace!(v, x -> isfinite(x) && x > 0 ? x : ϵ)
+    scrub!(v, ϵ) = @inbounds for i in eachindex(v)
+        y = v[i]
+        if !isfinite(y) || y <= 0
+            v[i] = ϵ
+        end
+    end
 
     # ------------------------------------------------------------------ #
     # 0. initial quantitative guess                                      #
@@ -69,7 +74,7 @@ function estimate_Q_sa(
             j    = rand(rng, free_cols)
             prey = findall(A[:, j] .& .!known_mask[:, j])
             q_old = copy(Q[prey, j])
-            scrub!(q_old)                                 # <-- NEW
+            scrub!(q_old, ϵ)                                # <-- NEW
             Q[prey, j] .= rand(rng, Dirichlet((q_old .+ ϵ)/wiggle))
             push!(Δs, sse(Q) - err)
             Q[prey, j] .= q_old
@@ -86,7 +91,7 @@ function estimate_Q_sa(
         isempty(prey) && continue
 
         q_old = copy(Q[prey, j])
-        scrub!(q_old)                                     # <-- NEW
+        scrub!(q_old, ϵ)                                      # <-- NEW
 
         # Dirichlet proposal with clamping + safe renorm
         Qprop  = rand(rng, Dirichlet((q_old .+ ϵ) / wiggle))
