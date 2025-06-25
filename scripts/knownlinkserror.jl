@@ -19,6 +19,7 @@ using Plots
 
 using ProgressMeter
 using Statistics
+using UnicodePlots
 
 # ------------------------------------------------------------
 # experiment settings
@@ -68,7 +69,12 @@ df   = DataFrame(pct = Float64[], rep = Int[], R2 = Float64[])
                     rng        = rng)
 
     #### 4. record R² ######################################################
-    r2 = cor(Q_true[A .> 0], Q_est[A .> 0])^2
+    stats = evaluate_Q(Q_true, Q_est;
+           known_mask = mask,   # Bool matrix same size as Q
+           eps        = 1e-12)
+
+    r2 = stats.r;
+
     push!(df, (pct, rep, r2))
 end
 
@@ -94,7 +100,7 @@ show(df_summary, allrows=true, allcols=true)
 S, C         = 100, 0.02
 alpha_true       = 1.0           # builds Q_true
 pct_grid     = 0.0:0.05:0.50 # fraction of links locked
-n_rep        = 5
+n_rep        = 10
 steps_sa     = 15_000
 wiggle_sa    = 0.05
 ΔTN          = 3.5
@@ -131,7 +137,7 @@ r2_v    = Vector{Float64}(undef, Nruns)
     d15N_true = (ftl_true .- 1) .* ΔTN
 
     # ----- lock links -----------------------------------------------------
-    mask      = select_known_links(Q_true; pct = pct, skew = :percol, rng = rng)
+    mask      = select_known_links(Q_true; pct = pct, skew = :rand, rng = rng)
 
     # ----- simulated annealing -------------------------------------------
     Q_est, _  = estimate_Q_sa(
@@ -145,7 +151,13 @@ r2_v    = Vector{Float64}(undef, Nruns)
                     rng        = rng)
 
     # Pearson R² over all realised links
-    r2        = cor(Q_true[A .> 0], Q_est[A .> 0])^2
+    # r2        = cor(Q_true[A .> 0], Q_est[A .> 0])^2
+
+    stats = evaluate_Q(Q_true, Q_est;
+           known_mask = mask,   # Bool matrix same size as Q
+           eps        = 1e-12)
+
+    r2 = stats.r;
 
     pct_v[idx] = pct
     rep_v[idx] = rep
@@ -155,10 +167,13 @@ end
 ###############################################################################
 # summarise & print
 ###############################################################################
-df  = DataFrame(pct = pct_v, rep = rep_v, R2 = r2_v)
+df  = DataFrame(pct = pct_v, rep = rep_v, R2 = r2_v);
 df_summary = combine(DataFrames.groupby(df, :pct)) do sub
     (; mean_R2 = mean(sub.R2), sd_R2 = std(sub.R2))
 end
 
+UnicodePlots.lineplot(df_summary[!,:mean_R2])
+
 println("\nMean ± SD of R² across replicates")
 show(df_summary, allrows = true, allcols = true)
+

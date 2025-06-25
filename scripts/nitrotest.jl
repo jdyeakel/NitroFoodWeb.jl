@@ -75,8 +75,8 @@ d15N_true = ((ftl_true .- 1) .* ΔTN);
 # 3.  Lock in known links ~ not sure this works 100%
 ###############################################################
 
-known_mask = select_known_links(Q_true; pct = 0.1, skew = :percol)
-# heatmap(known_mask)
+known_mask = select_known_links(Q_true; pct = 0.2, skew = :percol);
+heatmap(known_mask)
 
 ###############################################################
 # 4.  Estimate Q with simulated annealing
