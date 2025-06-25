@@ -53,7 +53,16 @@ function estimate_Q_sa(
     # 1. helpers
     # ------------------------------------------------------------------
     ftl_obs = 1 .+ d15N_obs ./ ΔTN
-    sse(Qm) = sum((TrophInd(Qm) .- ftl_obs).^2)
+    # sse(Qm) = sum((TrophInd(Qm) .- ftl_obs).^2)
+
+    function sse(Qm)
+        # replicate the trimming rule: keep nodes with at least one in‐ or out‐link
+        deg  = vec(sum(Qm; dims = 1)) .+ vec(sum(Qm; dims = 2))
+        keep = findall(!iszero, deg)              # indices TrophInd will keep
+
+        t    = TrophInd(Qm)                       # length == length(keep)
+        return sum((t .- ftl_obs[keep]).^2)       # match lengths
+    end
 
     err        = sse(Q)
     best_err   = err
