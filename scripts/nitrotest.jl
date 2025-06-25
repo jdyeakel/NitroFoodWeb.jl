@@ -24,7 +24,7 @@ C = 0.02;
 A, niche = nichemodelweb(S,C)
 A_bool = A .> 0
 # Get fractional trophic levels
-tl = TrophInd(A)
+tl = trophic_levels(A)
 # Sort by trophic level
 tlsp = sortperm(tl); 
 #Reorder sorted list/matrices for analysis/presentation
@@ -38,7 +38,7 @@ p_a = heatmap(A);
 # alpha >> 1 ~ diets forced to equal weights
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
-Q_true = quantitativeweb(A; alpha=1)
+Q_true = quantitativeweb(A; alpha=0.1)
 p_q = heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
@@ -49,7 +49,7 @@ p_q = heatmap(Q_true);
 
 # Calculate the actual FRACTIONAL TROPHIC LEVEL based on Q
 # We will use this to get the observed d15N
-ftl_true = TrophInd(Q_true)
+ftl_true = trophic_levels(Q_true)
 # scatter(tl,ftl)
 
 # Provide *actual* d15N values to each species based on fractional trophic level
@@ -75,42 +75,47 @@ d15N_true = ((ftl_true .- 1) .* ΔTN);
 # 3.  Lock in known links ~ not sure this works 100%
 ###############################################################
 
-known_mask = select_known_links(Q_true; pct = 0.25, skew = :percol)
+known_mask = select_known_links(Q_true; pct = 0.1, skew = :percol)
 # heatmap(known_mask)
 
 ###############################################################
 # 4.  Estimate Q with simulated annealing
 ###############################################################
-Q_est, tr  = estimate_Q_sa(A_bool, 
+Q_est, err_trace  = estimate_Q_sa(A_bool, 
                         d15N_true;
                         ΔTN     = ΔTN,
                         known_mask = known_mask,  # true/false links to lock
                         Q_known    = Q_true, # values for the locked links
                         alpha0 = 1.0, 
                         steps = 15_000,
-                        wiggle  = 0.05)
+                        wiggle  = 0.01)
 
+# Smaller wiggle ⇒ each αᵢ is larger ⇒ the Dirichlet is concentrated near the current weights.
+# Larger wiggle ⇒ αᵢ shrinks ⇒ the Dirichlet is flatter, so proposed weights can differ a lot.
 
 plot(err_trace,yscale=:log10)
 
-ftl_est = TrophInd(Q_est)
+ftl_est = trophic_levels(Q_est)
 @show cor(ftl_est, ftl_true)^2        # should be ≥ 0.99
+
+#################################
+# PLOT TROPHIC LEVEL CORRELATION
+#################################
 
 scatter(ftl_true, ftl_est; ms=3, xlabel="observed TL", ylabel="estimated TL")
 plot!([minimum(ftl_true), maximum(ftl_true)], [minimum(ftl_true), maximum(ftl_true)]; lc=:red, l=:dash, label="1:1")
 
-#Plot Q accuracy with known/unknown links ID'd
+
+#################################
+# PLOT Q WEIGHTS CORRELATION
+#################################
 
 # flatten matrices and collect indices ------------------------------------
 true_vec   = Q_true[Q_true .> 0]               # all non-zero true weights
 est_vec    = Q_est[Q_true .> 0]                # estimated counterparts
 known_vec  = known_mask[Q_true .> 0]           # Boolean mask in same order
-
-# split into two groups ----------------------------------------------------
 idx_known     = findall(known_vec)
 idx_unknown   = findall(.!known_vec)
-
-# main scatter -------------------------------------------------------------
 scatter(true_vec[idx_unknown], est_vec[idx_unknown];
         ms      = 3,  α = 0.6,
         xscale  = :log10, yscale = :log10,
@@ -120,19 +125,25 @@ scatter(true_vec[idx_unknown], est_vec[idx_unknown];
         xlims   = (0.01, 1.1),
         ylims   = (0.01, 1.1),
         label   = "free links")
-
-# overlay known links ------------------------------------------------------
 scatter!(true_vec[idx_known], est_vec[idx_known];
          ms = 5, mc = :orange, markerstrokecolor = :black,
          label = "locked links")
-
 # 1:1 reference line -------------------------------------------------------
 plot!([1e-10, maximum(true_vec)], [1e-10, maximum(true_vec)];
       lc = :red, l = :dash, label = "1 : 1")
 
 
-#Print different stats on Q_est accuracy
-stats = evaluate_Q(Q_true, Q_est)
+
+################################################################
+# PRINT STATS - evaluate only unknown links (ignores known_mask)
+################################################################
+# #Print different stats on Q_est accuracy
+# stats = evaluate_Q(Q_true, Q_est)
+
+stats = evaluate_Q(Q_true, Q_est;
+           known_mask = known_mask,   # Bool matrix same size as Q
+           eps        = 1e-12)
+
 values = [
     stats.mae,
     stats.rmse,

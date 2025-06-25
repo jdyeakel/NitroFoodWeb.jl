@@ -39,17 +39,17 @@ df   = DataFrame(pct = Float64[], rep = Int[], R2 = Float64[])
 
 # ------------------------------------------------------------
 @showprogress for pct in pct_grid, rep in 1:n_rep
-    rng = copy(rng_global)                      # independent stream per run
+    rng = MersenneTwister(hash((20250624, pct, rep)))
 
     #### 1. build niche web & true diets ####################################
     A, _   = nichemodelweb(S, C; rng = rng)
-    tl     = TrophInd(A)
+    tl     = trophic_levels(A)
     order  = sortperm(tl)
     A      = A[order, order]
     A_bool = (A .> 0)
 
     Q_true = quantitativeweb(A; alpha = alpha_true, rng = rng)
-    ftl    = TrophInd(Q_true)
+    ftl    = trophic_levels(Q_true)
     ΔTN    = 3.5
     d15N   = (ftl .- 1) .* ΔTN
 
@@ -81,6 +81,9 @@ end
 
 println("\nMean ± SD of R² for each pct locked")
 show(df_summary, allrows=true, allcols=true)
+
+
+
 
 
 # PARALLEL VERSION
@@ -118,13 +121,13 @@ r2_v    = Vector{Float64}(undef, Nruns)
 
     # ----- build web & true diets -----------------------------------------
     A, _      = nichemodelweb(S, C; rng = rng)
-    tl        = TrophInd(A)
+    tl        = trophic_levels(A)
     order     = sortperm(tl)
     A         = A[order, order]
     A_bool    = (A .> 0)
 
     Q_true    = quantitativeweb(A; alpha = alpha_true, rng = rng)
-    ftl_true  = TrophInd(Q_true)
+    ftl_true  = trophic_levels(Q_true)
     d15N_true = (ftl_true .- 1) .* ΔTN
 
     # ----- lock links -----------------------------------------------------
@@ -153,7 +156,7 @@ end
 # summarise & print
 ###############################################################################
 df  = DataFrame(pct = pct_v, rep = rep_v, R2 = r2_v)
-df_summary = combine(groupby(df, :pct)) do sub
+df_summary = combine(DataFrames.groupby(df, :pct)) do sub
     (; mean_R2 = mean(sub.R2), sd_R2 = std(sub.R2))
 end
 

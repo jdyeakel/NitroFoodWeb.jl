@@ -19,7 +19,7 @@ include("nichemodelweb.jl")
 include("quantitativeweb.jl")
 include("trophic.jl")
 include("estimate_Q_sa.jl")
-include("trophic_levels_full.jl")
+include("trophic_levels.jl")
 include("evaluate_Q.jl")
 include("select_known_links.jl")
 
@@ -30,7 +30,7 @@ InternalNetwork,
 Diet,
 TrophInd,
 estimate_Q_sa,
-trophic_levels_full,
+trophic_levels,
 evaluate_Q,
 select_known_links
 
