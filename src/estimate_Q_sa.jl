@@ -23,9 +23,11 @@ function estimate_Q_sa(
 
     S, ϵ = size(A, 1), 1e-12
 
-    # ------------------------------------------------------------------
-    # 0. initial quantitative guess
-    # ------------------------------------------------------------------
+    scrub!(v) = replace!(v, x -> isfinite(x) && x > 0 ? x : ϵ)
+
+    # ------------------------------------------------------------------ #
+    # 0. initial quantitative guess                                      #
+    # ------------------------------------------------------------------ #
     Q = quantitativeweb(A; alpha = alpha0, rng = rng)
 
     if Q_known !== nothing
@@ -40,33 +42,34 @@ function estimate_Q_sa(
         share      = max(ϵ, 1 - locked_sum)
 
         if any(free)
-            Qfree = Q[free, j] ./ sum(Q[free, j])     # safe (free non-empty)
+            Qfree = Q[free, j] ./ sum(Q[free, j])
             Q[free, j] .= Qfree .* share
         else
-            Q[locked, j] ./= locked_sum               # whole column locked
+            Q[locked, j] ./= locked_sum
         end
     end
 
-    # ------------------------------------------------------------------
-    # 1. helpers
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ #
+    # 1. helpers                                                         #
+    # ------------------------------------------------------------------ #
     ftl_obs = 1 .+ d15N_obs ./ ΔTN
     sse(Qm) = sum((trophic_levels(Qm) .- ftl_obs).^2)
 
-    err      = sse(Q)
-    best_err = err
-    trace    = Float64[err]
+    err       = sse(Q)
+    best_err  = err
+    trace     = Float64[err]
     free_cols = [j for j in 1:S if any(A[:, j] .& .!known_mask[:, j])]
 
-    # ------------------------------------------------------------------
-    # 2. adaptive T₀
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ #
+    # 2. adaptive T₀                                                     #
+    # ------------------------------------------------------------------ #
     T = T0_user === nothing ? begin
         Δs = Float64[]
         for _ in 1:100
             j    = rand(rng, free_cols)
             prey = findall(A[:, j] .& .!known_mask[:, j])
             q_old = copy(Q[prey, j])
+            scrub!(q_old)                                 # <-- NEW
             Q[prey, j] .= rand(rng, Dirichlet((q_old .+ ϵ)/wiggle))
             push!(Δs, sse(Q) - err)
             Q[prey, j] .= q_old
@@ -74,33 +77,35 @@ function estimate_Q_sa(
         median(abs.(Δs)) / log(3)
     end : T0_user
 
-    # ------------------------------------------------------------------
-    # 3. main SA loop
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ #
+    # 3. main SA loop                                                    #
+    # ------------------------------------------------------------------ #
     for k in 1:steps
         j    = rand(rng, free_cols)
-        prey = findall(A[:, j] .& .!known_mask[:, j])   # editable links
-        isempty(prey) && continue                      # safety guard
+        prey = findall(A[:, j] .& .!known_mask[:, j])
+        isempty(prey) && continue
 
-        q_old  = copy(Q[prey, j])
+        q_old = copy(Q[prey, j])
+        scrub!(q_old)                                     # <-- NEW
 
-        # ▼ robust Dirichlet proposal with clamping + safe renorm
+        # Dirichlet proposal with clamping + safe renorm
         Qprop  = rand(rng, Dirichlet((q_old .+ ϵ) / wiggle))
-        Qprop .= max.(Qprop, ϵ)                         # no zeros
+        Qprop .= max.(Qprop, ϵ)
         den    = sum(Qprop)
-        den == 0 && (Qprop .= ϵ; den = ϵ*length(prey))  # avoid NaN
+        den == 0 && (Qprop .= ϵ; den = ϵ * length(prey))
         Qprop ./= den
 
-        share  = max(ϵ, 1 - sum(Q[known_mask[:, j], j]))  # residual mass
-        Qprop .*= share                                   # scale to column
+        share  = max(ϵ, 1 - sum(Q[known_mask[:, j], j]))
+        Qprop .*= share
 
         Q[prey, j] .= Qprop
         err_new     = sse(Q)
 
         if err_new < err || rand(rng) < exp(-(err_new - err)/T)
-            err = err_new;  best_err = min(best_err, err)
+            err = err_new
+            best_err = min(best_err, err)
         else
-            Q[prey, j] .= q_old                           # rollback
+            Q[prey, j] .= q_old
         end
 
         push!(trace, best_err)

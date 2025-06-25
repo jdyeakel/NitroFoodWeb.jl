@@ -98,7 +98,7 @@ show(df_summary, allrows=true, allcols=true)
 # experiment constants
 ###############################################################################
 S, C         = 100, 0.02
-alpha_true       = 1.0           # builds Q_true
+alpha_true       = 10           # builds Q_true
 pct_grid     = 0.0:0.05:0.50 # fraction of links locked
 n_rep        = 10
 steps_sa     = 15_000
@@ -177,4 +177,108 @@ show(df_summary, allrows = true, allcols = true)
 UnicodePlots.lineplot(df_summary[!,:mean_R2])
 
 
+
+
+
+# PARALLEL VERSION - INCLUDING ALPHA_TRUE LOOP
+
+###############################################################################
+# experiment constants
+###############################################################################
+S, C          = 100, 0.02
+alpha_list    = [0.5, 1.0, 10.0]          # <—— three diet breadths to test
+pct_grid      = 0.0:0.05:0.50             # fraction of links locked
+n_rep         = 10
+steps_sa      = 15_000
+wiggle_sa     = 0.05
+ΔTN           = 3.5
+base_seed     = 20250624
+
+###############################################################################
+# pre-allocate result arrays (thread-safe, no push!)
+###############################################################################
+Nruns   = length(pct_grid) * n_rep * length(alpha_list)
+pct_v   = Vector{Float64}(undef, Nruns)
+rep_v   = Vector{Int}(undef, Nruns)
+r2_v    = Vector{Float64}(undef, Nruns)
+
+
+###############################################################################
+# threaded sweep
+###############################################################################
+@showprogress Threads.@threads for idx in 1:Nruns
+    # decode flat index -> (ia , ipct , rep)
+    rep  = (idx-1)              % n_rep                + 1
+    ipct = ((idx-1) ÷ n_rep)    % length(pct_grid)     + 1
+    ia   = ((idx-1) ÷ (n_rep*length(pct_grid)))        + 1
+
+    alpha_true = alpha_list[ia]
+    pct        = pct_grid[ipct]
+
+    rng = MersenneTwister(hash((base_seed, Threads.threadid(), idx)))
+
+    # --- build web & true diets ------------------------------------------
+    A, _       = nichemodelweb(S, C; rng = rng)
+    A_bool     = (A .> 0)
+    Q_true     = quantitativeweb(A; alpha = alpha_true, rng = rng)
+    ftl_true   = trophic_levels(Q_true)
+    d15N_true  = (ftl_true .- 1) .* ΔTN
+
+    # --- lock links ------------------------------------------------------
+    mask       = select_known_links(Q_true; pct = pct, skew = :rand, rng = rng)
+
+    # --- anneal ----------------------------------------------------------
+    Q_est, _   = estimate_Q_sa(A_bool, d15N_true;
+                               ΔTN        = ΔTN,
+                               known_mask = mask,
+                               Q_known    = Q_true,   # comment to let SA estimate them
+                               alpha0     = 1.0,
+                               steps      = steps_sa,
+                               wiggle     = wiggle_sa,
+                               rng        = rng)
+
+    stats = evaluate_Q(Q_true, Q_est; known_mask = mask, eps = 1e-12)
+    r2    = stats.r
+
+    alpha_v[idx]   = alpha_true
+    pct_v[idx] = pct
+    rep_v[idx] = rep
+    r2_v[idx]  = r2
+end
+
+###############################################################################
+# build DataFrame, dropping the NaN rows
+###############################################################################
+
+df     = DataFrame(alpha = alpha_v,
+                  pct   = pct_v,
+                  rep   = rep_v,
+                  R2    = r2_v)
+
+df_summary = DataFrames.combine(groupby(df, [:alpha, :pct])) do sub
+    (; mean_R2 = mean(sub.R2), sd_R2 = std(sub.R2))
+end
+
+println("\nMean ± SD of R² on UNKNOWN links")
+show(df_summary, allrows = true, allcols = true)
+
+###############################################################################
+# plot three curves with UnicodePlots
+###############################################################################
+p = nothing
+for alpha in alpha_list
+    sub = df_summary[df_summary.alpha .== alpha, :]
+    if p === nothing
+        p = lineplot(sub.pct, sub.mean_R2;
+                     title = "R² vs. fraction known (n = $n_rep per point)",
+                     xlabel = "pct known",
+                     ylabel = "mean R²",
+                     width = 70, height = 20,
+                     labels = ["alpha = $alpha"])
+    else
+        lineplot!(p, sub.pct, sub.mean_R2; labels = ["alpha = $alpha"])
+    end
+end
+println()
+display(p)
 
