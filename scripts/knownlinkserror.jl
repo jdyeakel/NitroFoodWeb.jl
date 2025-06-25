@@ -265,24 +265,22 @@ show(df_summary, allrows = true, allcols = true)
 ###############################################################################
 # plot three curves with UnicodePlots
 ###############################################################################
-using UnicodePlots
 
 p = nothing
 for alpha in alpha_list
     sub = df_summary[df_summary.alpha .== alpha, :]
-
     if p === nothing
-        p = lineplot(sub.pct, sub.mean_R2;
+        p = plot(sub.pct, sub.mean_R2;
                      title  = "R² vs. fraction known (n = $n_rep per point)",
                      xlabel = "pct known",
                      ylabel = "mean R²",
                      width  = 70, height = 20,
                      name   = "α = $alpha")
     else
-        lineplot!(p, sub.pct, sub.mean_R2; name = "α = $alpha")
+        plot!(p, sub.pct, sub.mean_R2; name = "α = $alpha")
     end
 end
 
-println()          # spacing
-display(p)
+filename = smartpath("../figures/fig_alphaknown.pdf")
+savefig(p,filename)
 
