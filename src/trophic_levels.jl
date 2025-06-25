@@ -21,34 +21,35 @@ function trophic_levels(Flow::AbstractMatrix{T}) where {T<:Real}
     S = size(Flow, 1)
     @assert size(Flow, 2) == S "Flow matrix must be square"
 
-    # ------------------------------------------------------------------ #
-    # 1. Build diet-weight matrix P (column-stochastic)                  #
-    # ------------------------------------------------------------------ #
-    colsum = sum(Flow; dims = 1)                     # 1 × S vector
-    P      = zeros(Float64, S, S)                    # allocate once
+    # --------------------------------------------------------------- #
+    # 1. Column-normalised diet matrix P                              #
+    # --------------------------------------------------------------- #
+    colsum = sum(Flow; dims = 1)
+    P      = zeros(Float64, S, S)
 
-    @inbounds for j in 1:S                           # consumer column
+    @inbounds for j in 1:S
         s = colsum[j]
         if s > 0
             invs = 1.0 / s
-            @simd for i in 1:S                       # prey row
+            @simd for i in 1:S
                 P[i, j] = Float64(Flow[i, j]) * invs
             end
         end
-        # basal consumer column (no prey) remains zeros
     end
 
-    # ------------------------------------------------------------------ #
-    # 2. Solve (I − P) * TL = 1  (with ridge fallback)                   #
-    # ------------------------------------------------------------------ #
-    A  = I - P                         # Float64 matrix
+    # --------------------------------------------------------------- #
+    # 2. Solve (I − P) TL = 1  (with ridge fallback)                  #
+    # --------------------------------------------------------------- #
+    A   = I - P
     rhs = ones(S)
 
+    TL = Vector{Float64}(undef, S)           # pre-declare for scope
+
     try
-        TL = A \ rhs                   # LU factorisation
+        TL .= A \ rhs
     catch e
         if e isa LinearAlgebra.SingularException
-            TL = (A + 1e-12I) \ rhs    # small ridge restores invertibility
+            TL .= (A + 1e-12I) \ rhs         # tiny ridge restores rank
         else
             rethrow(e)
         end
