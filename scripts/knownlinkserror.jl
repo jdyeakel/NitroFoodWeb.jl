@@ -188,7 +188,7 @@ UnicodePlots.lineplot(df_summary[!,:mean_R2])
 S, C          = 100, 0.02
 alpha_list    = [0.5, 1.0, 10.0]          # <—— three diet breadths to test
 pct_grid      = 0.0:0.05:0.50             # fraction of links locked
-n_rep         = 10
+n_rep         = 20
 steps_sa      = 15_000
 wiggle_sa     = 0.05
 ΔTN           = 3.5
@@ -201,7 +201,7 @@ Nruns   = length(pct_grid) * n_rep * length(alpha_list)
 pct_v   = Vector{Float64}(undef, Nruns)
 rep_v   = Vector{Int}(undef, Nruns)
 r2_v    = Vector{Float64}(undef, Nruns)
-
+alpha_v = Vector{Float64}(undef, Nruns)
 
 ###############################################################################
 # threaded sweep
@@ -255,7 +255,7 @@ df     = DataFrame(alpha = alpha_v,
                   rep   = rep_v,
                   R2    = r2_v)
 
-df_summary = DataFrames.combine(groupby(df, [:alpha, :pct])) do sub
+df_summary = combine(DataFrames.groupby(df, [:alpha, :pct])) do sub
     (; mean_R2 = mean(sub.R2), sd_R2 = std(sub.R2))
 end
 
@@ -265,20 +265,24 @@ show(df_summary, allrows = true, allcols = true)
 ###############################################################################
 # plot three curves with UnicodePlots
 ###############################################################################
+using UnicodePlots
+
 p = nothing
 for alpha in alpha_list
     sub = df_summary[df_summary.alpha .== alpha, :]
+
     if p === nothing
         p = lineplot(sub.pct, sub.mean_R2;
-                     title = "R² vs. fraction known (n = $n_rep per point)",
+                     title  = "R² vs. fraction known (n = $n_rep per point)",
                      xlabel = "pct known",
                      ylabel = "mean R²",
-                     width = 70, height = 20,
-                     labels = ["alpha = $alpha"])
+                     width  = 70, height = 20,
+                     name   = "α = $alpha")
     else
-        lineplot!(p, sub.pct, sub.mean_R2; labels = ["alpha = $alpha"])
+        lineplot!(p, sub.pct, sub.mean_R2; name = "α = $alpha")
     end
 end
-println()
+
+println()          # spacing
 display(p)
 
