@@ -21,8 +21,15 @@ function trophic_levels(Flow::AbstractMatrix{T}) where {T<:Real}
     S = size(Flow, 1)
     @assert size(Flow, 2) == S "Flow matrix must be square"
 
+    # --------------------------------------------------------------- #
+    # 0.  scrub non-finite or negative entries (rare safety net)      #
+    # --------------------------------------------------------------- #
     if any(!isfinite, Flow)
-        Flow = replace!(copy(Flow), x -> isfinite(x) && x≥0 ? x : 0.0)
+        Flow = copy(Flow)                       # avoid mutating caller’s array
+        @inbounds for i in eachindex(Flow)
+            y = Flow[i]
+            Flow[i] = (isfinite(y) && y ≥ 0) ? y : 0.0
+        end
     end
 
 
@@ -53,7 +60,7 @@ function trophic_levels(Flow::AbstractMatrix{T}) where {T<:Real}
     try
         TL .= A \ rhs
     catch e
-        if e isa LinearAlgebra.SingularException
+        if e isa LinearAlgebra.SingularException || e isa ArgumentError
             TL .= (A + 1e-12I) \ rhs         # tiny ridge restores rank
         else
             rethrow(e)
