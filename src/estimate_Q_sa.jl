@@ -47,10 +47,11 @@ function estimate_Q_sa(
         share      = max(ϵ, 1 - locked_sum)
 
         if any(free)
-            Qfree = Q[free, j] ./ sum(Q[free, j])
-            Q[free, j] .= Qfree .* share
-        else
-            Q[locked, j] ./= locked_sum
+            s = sum(Q[free, j])
+            Q[free, j] ./= s == 0 ? length(Q[free, j]) : s  # avoid /0
+            Q[free, j] .*= share
+        elseif locked_sum > 0
+            Q[locked, j] ./= locked_sum                     # all-locked col
         end
     end
 
@@ -90,32 +91,44 @@ function estimate_Q_sa(
         prey = findall(A[:, j] .& .!known_mask[:, j])
         isempty(prey) && continue
 
+        # ---------------------------------------------------- #
+        # 1. Dirichlet proposal for the editable prey slice    #
+        # ---------------------------------------------------- #
         q_old = copy(Q[prey, j])
-        scrub!(q_old, ϵ)                                      # <-- NEW
+        scrub!(q_old, ϵ)
 
-        # Dirichlet proposal with clamping + safe renorm
         Qprop  = rand(rng, Dirichlet((q_old .+ ϵ) / wiggle))
         Qprop .= max.(Qprop, ϵ)
-        den    = sum(Qprop)
-        den == 0 && (Qprop .= ϵ; den = ϵ * length(prey))
-        Qprop ./= den
+        Qprop ./= sum(Qprop)                    # now sums to 1
 
         share  = max(ϵ, 1 - sum(Q[known_mask[:, j], j]))
-        Qprop .*= share
+        Qprop .*= share                         # scale to residual mass
 
-        Q[prey, j] .= Qprop
-        err_new     = sse(Q)
+        # ---------------------------------------------------- #
+        # 2. Assemble candidate full column                    #
+        # ---------------------------------------------------- #
+        old_col = copy(@view Q[:, j])           # immutable copy for rollback
+        new_col = copy(old_col)                 # start with current
+        new_col[prey] .= Qprop                  # update editable slice
+        scrub!(new_col, ϵ)                      # ensure finite
+
+        # ---------------------------------------------------- #
+        # 3. Evaluate and accept/reject                        #
+        # ---------------------------------------------------- #
+        Q[:, j] .= new_col                      # tentative write
+        err_new  = sse(Q)
 
         if err_new < err || rand(rng) < exp(-(err_new - err)/T)
-            err = err_new
+            err      = err_new
             best_err = min(best_err, err)
         else
-            Q[prey, j] .= q_old
+            Q[:, j] .= old_col                  # full rollback
         end
 
         push!(trace, best_err)
         T *= 0.9995
     end
+
 
     return Q, trace
 end

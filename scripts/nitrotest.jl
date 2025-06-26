@@ -39,7 +39,7 @@ p_a = heatmap(A);
 # alpha >> 1 ~ diets forced to equal weights
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
-Q_true = quantitativeweb(A; alpha=100);
+Q_true = quantitativeweb(A; alpha=0.5);
 p_q = heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
@@ -77,7 +77,7 @@ d15N_true = ((ftl_true .- 1) .* ΔTN);
 # 3.  Lock in known links ~ not sure this works 100%
 ###############################################################
 
-known_mask = select_known_links(Q_true; pct = 0.2, skew = :percol);
+known_mask = select_known_links(Q_true; pct = 0.2, skew = :rand);
 heatmap(known_mask)
 
 ###############################################################
@@ -97,13 +97,13 @@ Q_est, err_trace  = estimate_Q_sa(A_bool,
 
 plot(err_trace,yscale=:log10)
 
-ftl_est = trophic_levels(Q_est)
-@show cor(ftl_est, ftl_true)^2        # should be ≥ 0.99
+
 
 #################################
 # PLOT TROPHIC LEVEL CORRELATION
 #################################
-
+ftl_est = trophic_levels(Q_est)
+@show cor(ftl_est, ftl_true)^2        # should be ≥ 0.99
 scatter(ftl_true, ftl_est; ms=3, xlabel="observed TL", ylabel="estimated TL")
 plot!([minimum(ftl_true), maximum(ftl_true)], [minimum(ftl_true), maximum(ftl_true)]; lc=:red, l=:dash, label="1:1")
 

@@ -21,6 +21,11 @@ function trophic_levels(Flow::AbstractMatrix{T}) where {T<:Real}
     S = size(Flow, 1)
     @assert size(Flow, 2) == S "Flow matrix must be square"
 
+    if any(!isfinite, Flow)
+        Flow = replace!(copy(Flow), x -> isfinite(x) && x≥0 ? x : 0.0)
+    end
+
+
     # --------------------------------------------------------------- #
     # 1. Column-normalised diet matrix P                              #
     # --------------------------------------------------------------- #
