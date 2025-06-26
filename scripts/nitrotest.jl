@@ -24,6 +24,7 @@ C = 0.02;
 A, niche = nichemodelweb(S,C)
 A_bool = A .> 0
 # Get fractional trophic levels
+tltest = TrophInd(A)
 tl = trophic_levels(A)
 # Sort by trophic level
 tlsp = sortperm(tl); 
@@ -38,14 +39,15 @@ p_a = heatmap(A);
 # alpha >> 1 ~ diets forced to equal weights
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
-Q_true = quantitativeweb(A; alpha=0.1)
+Q_true = quantitativeweb(A; alpha=100);
 p_q = heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
 # plot(p_a, p_q; layout = (2, 1), size = (400, 600))
 
 # Look at histogram of weights
-# histogram(vec(Q[(Q .> 0) .& (Q .< 1)]))
+# histogram(vec(Q_true[(Q_true .> 0) .& (Q_true .< 1)]))
+histogram(vec(Q_true[(Q_true .> 0)]),bins=20)
 
 # Calculate the actual FRACTIONAL TROPHIC LEVEL based on Q
 # We will use this to get the observed d15N

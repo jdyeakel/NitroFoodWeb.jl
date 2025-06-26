@@ -38,9 +38,9 @@ function trophic_levels(Flow::AbstractMatrix{T}) where {T<:Real}
     end
 
     # --------------------------------------------------------------- #
-    # 2. Solve (I − P) TL = 1  (with ridge fallback)                  #
+    # 2. Solve (I − P') TL = 1  (with ridge fallback)                  #
     # --------------------------------------------------------------- #
-    A   = I - P
+    A   = I - transpose(P)
     rhs = ones(S)
 
     TL = Vector{Float64}(undef, S)           # pre-declare for scope

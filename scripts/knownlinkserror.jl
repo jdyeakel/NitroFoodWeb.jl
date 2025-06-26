@@ -201,19 +201,23 @@ UnicodePlots.lineplot(df_summary[!,:mean_R2])
 # end
 
 
+
+
 # PARALLEL VERSION - INCLUDING ALPHA_TRUE LOOP
 
 ###############################################################################
 # experiment constants
 ###############################################################################
-S, C          = 100, 0.02
-alpha_list    = [0.5, 1.0, 10.0]          # <—— three diet breadths to test
-pct_grid      = 0.0:0.05:0.50             # fraction of links locked
-n_rep         = 500
-steps_sa      = 20_000
-wiggle_sa     = 0.05
-ΔTN           = 3.5
-base_seed     = 20250624
+S, C          = 100, 0.02;
+alpha_list    = [0.5, 1.0, 10.0];          # <—— three diet breadths to test
+pct_grid      = 0.0:0.05:0.50;             # fraction of links locked
+n_rep         = 500;
+steps_sa      = 20_000;
+wiggle_sa     = 0.05;
+ΔTN           = 3.5;
+base_seed     = 20250624;
+
+skew_setting  = "rand";
 
 alpha_param = repeat(alpha_list, inner = length(pct_grid)*n_rep)
 pct_param   = repeat(repeat(pct_grid, inner = n_rep), outer = length(alpha_list))
@@ -228,8 +232,11 @@ Nruns = length(alpha_param)
 ###############################################################################
 pct_v   = Vector{Float64}(undef, Nruns);
 rep_v   = Vector{Int}(undef, Nruns);
-r2_v    = Vector{Float64}(undef, Nruns);
 alpha_v = Vector{Float64}(undef, Nruns);
+r2_v    = Vector{Float64}(undef, Nruns);
+mae_v    = Vector{Float64}(undef, Nruns);
+rmse_v   = Vector{Float64}(undef, Nruns);
+meanKL_v = Vector{Float64}(undef, Nruns);
 
 ###############################################################################
 # threaded sweep
@@ -258,7 +265,7 @@ alpha_v = Vector{Float64}(undef, Nruns);
     d15N_true  = (ftl_true .- 1) .* ΔTN
 
     # --- lock links ------------------------------------------------------
-    mask       = select_known_links(Q_true; pct = pct, skew = :rand, rng = rng)
+    mask       = select_known_links(Q_true; pct = pct, skew = Symbol(skew_setting), rng = rng)
 
     # --- anneal ----------------------------------------------------------
     Q_est, _   = estimate_Q_sa(A_bool, d15N_true;
@@ -271,13 +278,26 @@ alpha_v = Vector{Float64}(undef, Nruns);
                                rng        = rng)
 
     stats = evaluate_Q(Q_true, Q_est; known_mask = mask, eps = 1e-12)
-    r2    = stats.r
+    r2_Q    = stats.r;
+    mae_Q   = stats.mae;
+    rmse_Q  = stats.rmse;
+    meanKL_Q = stats.mean_KL;
 
-    alpha_v[idx]   = alpha_true
-    pct_v[idx] = pct
-    rep_v[idx] = rep
-    r2_v[idx]  = r2
+    alpha_v[idx]   = alpha_true;
+    pct_v[idx] = pct;
+    rep_v[idx] = rep;
+    r2_v[idx]  = r2_Q;
+    mae_v[idx] = mae_Q;
+    rmse_v[idx] = rmse_Q;
+    meanKL_v[idx] = meanKL_Q;
 end
+
+#save data file
+filename = smartpath("../data/alphaknown_$(skew_setting).jld")
+@save filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
+
+# filename = smartpath("../data/alphaknown_$(skew_setting).jld")
+# @load filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
 
 ###############################################################################
 # build DataFrame, dropping the NaN rows
@@ -286,20 +306,47 @@ end
 df     = DataFrame(alpha = alpha_v,
                   pct   = pct_v,
                   rep   = rep_v,
-                  R2    = r2_v)
+                  R2    = r2_v,
+                  MAE   = mae_v,
+                  RMSE  = rmse_v,
+                  meanKL = meanKL_v)
 
-df_summary = combine(DataFrames.groupby(df, [:alpha, :pct])) do sub
-    # keep only finite R² values for this (α,pct) cell
-    r2_clean = filter(isfinite, sub.R2)
+using DataFrames, Statistics
 
-    if isempty(r2_clean)          # every replicate failed → mark with NaN
-        (; mean_R2 = NaN, sd_R2 = NaN)
-    elseif length(r2_clean) == 1  # std undefined for a single value
-        (; mean_R2 = r2_clean[1], sd_R2 = NaN)
-    else
-        (; mean_R2 = mean(r2_clean), sd_R2 = std(r2_clean))
-    end
-end
+df_summary = combine(
+  DataFrames.groupby(df, [:alpha, :pct]),
+
+  # R²: drop any non-finite values
+  :R2    => (x -> mean(filter(isfinite,    x))) => :mean_R2,
+  :R2    => (x -> std(filter(isfinite,    x))) => :sd_R2,
+
+  # MAE: drop any missing values
+  :MAE   => (x -> mean(filter(!ismissing,   x))) => :mean_MAE,
+  :MAE   => (x -> std(filter(!ismissing,   x))) => :sd_MAE,
+
+  # RMSE: same as MAE
+  :RMSE  => (x -> mean(filter(!ismissing,   x))) => :mean_RMSE,
+  :RMSE  => (x -> std(filter(!ismissing,   x))) => :sd_RMSE,
+
+  # meanKL: same pattern
+  :meanKL=> (x -> mean(filter(!ismissing,   x))) => :mean_KL,
+  :meanKL=> (x -> std(filter(!ismissing,   x))) => :sd_KL,
+)
+
+
+
+# df_summary = combine(DataFrames.groupby(df, [:alpha, :pct])) do sub
+#     # keep only finite R² values for this (α,pct) cell
+#     r2_clean = filter(isfinite, sub.R2)
+
+#     if isempty(r2_clean)          # every replicate failed → mark with NaN
+#         (; mean_R2 = NaN, sd_R2 = NaN)
+#     elseif length(r2_clean) == 1  # std undefined for a single value
+#         (; mean_R2 = r2_clean[1], sd_R2 = NaN)
+#     else
+#         (; mean_R2 = mean(r2_clean), sd_R2 = std(r2_clean))
+#     end
+# end
 
 
 println("\nMean ± SD of R² on UNKNOWN links")
@@ -330,6 +377,6 @@ for α in alpha_list
 end
 
 
-filename = smartpath("../figures/fig_alphaknown.pdf")
+filename = smartpath("../figures/fig_alphaknown_$(skew_setting).pdf")
 Plots.savefig(p,filename)
 
