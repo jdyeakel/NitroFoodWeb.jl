@@ -100,7 +100,7 @@ show(df_summary, allrows=true, allcols=true)
 S, C         = 100, 0.02
 alpha_true       = 10           # builds Q_true
 pct_grid     = 0.0:0.05:0.50 # fraction of links locked
-n_rep        = 10
+n_rep        = 2
 steps_sa     = 15_000
 wiggle_sa    = 0.05
 ΔTN          = 3.5
@@ -168,16 +168,37 @@ end
 # summarise & print
 ###############################################################################
 df  = DataFrame(pct = pct_v, rep = rep_v, R2 = r2_v);
-df_summary = combine(DataFrames.groupby(df, :pct)) do sub
-    (; mean_R2 = mean(sub.R2), sd_R2 = std(sub.R2))
-end;
+using Statistics, DataFrames
+
+df_summary = combine(DataFrames.groupby(df, [:pct])) do sub
+    # keep only finite R² values for this (pct) cell
+    r2_clean = filter(isfinite, sub.R2)
+
+    if isempty(r2_clean)          # every replicate failed → mark with NaN
+        (; mean_R2 = NaN, sd_R2 = NaN)
+    elseif length(r2_clean) == 1  # std undefined for a single value
+        (; mean_R2 = r2_clean[1], sd_R2 = NaN)
+    else
+        (; mean_R2 = mean(r2_clean), sd_R2 = std(r2_clean))
+    end
+end
+
 println("\nMean ± SD of R² across replicates")
 show(df_summary, allrows = true, allcols = true)
 
 UnicodePlots.lineplot(df_summary[!,:mean_R2])
 
 
-
+#NOTE: for below... this might be a better way to flatten nested loops:
+# using Base.Iterators: product
+# # build a lazy Cartesian‐product iterator
+# combo_it = product(alpha_list, pct_grid, 1:n_rep)
+# # now you can thread over it directly
+# Threads.@threads for (α, p, r) in combo_it
+#     # …your body here…
+#     # e.g. compute and write into flat vectors at
+#     # some global index, or just accumulate results
+# end
 
 
 # PARALLEL VERSION - INCLUDING ALPHA_TRUE LOOP
@@ -188,32 +209,44 @@ UnicodePlots.lineplot(df_summary[!,:mean_R2])
 S, C          = 100, 0.02
 alpha_list    = [0.5, 1.0, 10.0]          # <—— three diet breadths to test
 pct_grid      = 0.0:0.05:0.50             # fraction of links locked
-n_rep         = 20
-steps_sa      = 15_000
+n_rep         = 500
+steps_sa      = 20_000
 wiggle_sa     = 0.05
 ΔTN           = 3.5
 base_seed     = 20250624
 
+alpha_param = repeat(alpha_list, inner = length(pct_grid)*n_rep)
+pct_param   = repeat(repeat(pct_grid, inner = n_rep), outer = length(alpha_list))
+rep_param   = repeat(collect(1:n_rep),  outer = length(alpha_list)*length(pct_grid))
+
+@assert length(alpha_param) == length(pct_param) == length(rep_param)
+Nruns = length(alpha_param)
+
+
 ###############################################################################
 # pre-allocate result arrays (thread-safe, no push!)
 ###############################################################################
-Nruns   = length(pct_grid) * n_rep * length(alpha_list)
-pct_v   = Vector{Float64}(undef, Nruns)
-rep_v   = Vector{Int}(undef, Nruns)
-r2_v    = Vector{Float64}(undef, Nruns)
-alpha_v = Vector{Float64}(undef, Nruns)
+pct_v   = Vector{Float64}(undef, Nruns);
+rep_v   = Vector{Int}(undef, Nruns);
+r2_v    = Vector{Float64}(undef, Nruns);
+alpha_v = Vector{Float64}(undef, Nruns);
 
 ###############################################################################
 # threaded sweep
 ###############################################################################
 @showprogress Threads.@threads for idx in 1:Nruns
     # decode flat index -> (ia , ipct , rep)
-    rep  = (idx-1)              % n_rep                + 1
-    ipct = ((idx-1) ÷ n_rep)    % length(pct_grid)     + 1
-    ia   = ((idx-1) ÷ (n_rep*length(pct_grid)))        + 1
+    # rep  = (idx-1)              % n_rep                + 1
+    # ipct = ((idx-1) ÷ n_rep)    % length(pct_grid)     + 1
+    # ia   = ((idx-1) ÷ (n_rep*length(pct_grid)))        + 1
 
-    alpha_true = alpha_list[ia]
-    pct        = pct_grid[ipct]
+    # alpha_true = alpha_list[ia]
+    # pct        = pct_grid[ipct]
+
+    alpha_true = alpha_param[idx]
+    pct    = pct_param[idx]
+    rep    = rep_param[idx]
+
 
     rng = MersenneTwister(hash((base_seed, Threads.threadid(), idx)))
 
@@ -256,8 +289,18 @@ df     = DataFrame(alpha = alpha_v,
                   R2    = r2_v)
 
 df_summary = combine(DataFrames.groupby(df, [:alpha, :pct])) do sub
-    (; mean_R2 = mean(sub.R2), sd_R2 = std(sub.R2))
+    # keep only finite R² values for this (α,pct) cell
+    r2_clean = filter(isfinite, sub.R2)
+
+    if isempty(r2_clean)          # every replicate failed → mark with NaN
+        (; mean_R2 = NaN, sd_R2 = NaN)
+    elseif length(r2_clean) == 1  # std undefined for a single value
+        (; mean_R2 = r2_clean[1], sd_R2 = NaN)
+    else
+        (; mean_R2 = mean(r2_clean), sd_R2 = std(r2_clean))
+    end
 end
+
 
 println("\nMean ± SD of R² on UNKNOWN links")
 show(df_summary, allrows = true, allcols = true)
@@ -265,22 +308,28 @@ show(df_summary, allrows = true, allcols = true)
 ###############################################################################
 # plot three curves with UnicodePlots
 ###############################################################################
+using Plots          # choose your backend first, e.g. gr()
 
 p = nothing
-for alpha in alpha_list
-    sub = df_summary[df_summary.alpha .== alpha, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
+
     if p === nothing
         p = plot(sub.pct, sub.mean_R2;
-                     title  = "R² vs. fraction known (n = $n_rep per point)",
-                     xlabel = "pct known",
-                     ylabel = "mean R²",
-                     width  = 70, height = 20,
-                     name   = "α = $alpha")
+                 xlabel = "pct known",
+                 ylabel = "mean R²",
+                 label  = "α = $α",
+                 size   = (700, 500),
+                 frame = :box,
+                 width = 2)
     else
-        plot!(p, sub.pct, sub.mean_R2; name = "α = $alpha")
+        plot!(p, sub.pct, sub.mean_R2;
+              label = "α = $α",
+              width = 2)
     end
 end
 
+
 filename = smartpath("../figures/fig_alphaknown.pdf")
-savefig(p,filename)
+Plots.savefig(p,filename)
 
