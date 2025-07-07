@@ -18,6 +18,16 @@ function evaluate_Q(Q_true::AbstractMatrix,
     rmse  = sqrt(mean((est_vec .- true_vec).^2))     # root-MSE
     r     = length(true_vec) > 1 ? cor(true_vec, est_vec) : NaN
 
+    #Weighted root mean square error
+    w = true_vec
+    if sum(w) == 0
+        wmae = NaN
+        wrmse = NaN        # or skip this consumer
+    else
+        wmae = StatsBase.mean(abs.(est_vec .- true_vec), Weights(w))
+        wrmse = sqrt(StatsBase.mean((est_vec .- true_vec).^2, Weights(w)))
+    end
+
     # ------------------------------------------------------------------ #
     # 2.  Column-wise KL on UNKNOWN portion (renormalised)               #
     # ------------------------------------------------------------------ #
@@ -46,7 +56,7 @@ function evaluate_Q(Q_true::AbstractMatrix,
     med = median(KL)
     bad = findall(KL .> 3med)
 
-    return (; mae, rmse, r, mean_KL, KL, bad)
+    return (; mae, wmae, rmse, wrmse, r, mean_KL, KL, bad)
 end
 
 

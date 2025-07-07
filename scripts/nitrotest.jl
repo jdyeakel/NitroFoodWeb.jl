@@ -39,7 +39,7 @@ p_a = Plots.heatmap(A);
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # alpha >> 1 ~ diets forced to equal weights
-Q_true = quantitativeweb(A; alpha=1);
+Q_true = quantitativeweb(A; alpha=0.5);
 p_q = Plots.heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
@@ -47,7 +47,7 @@ p_q = Plots.heatmap(Q_true);
 
 # Look at histogram of weights
 # histogram(vec(Q_true[(Q_true .> 0) .& (Q_true .< 1)]))
-histogram(vec(Q_true[(Q_true .> 0)]),bins=20)
+# histogram(vec(Q_true[(Q_true .> 0)]),bins=20)
 
 # Calculate the actual FRACTIONAL TROPHIC LEVEL based on Q
 # We will use this to get the observed d15N
@@ -58,7 +58,7 @@ ftl_true = trophic_levels(Q_true)
 ##### We assume we know all primary producers #####
 # Allow a percentage of NON-PRIMARY PRODUCER trophic levels to be drawn: ftl_prop
 # Allow a certain amount of error on NON-PRIMARY PRODUCER observed trophic levels: ftl_error
-ftl_obs = ftl_inference(ftl_true; ftl_prop = 0.5, ftl_error = 0.3)
+ftl_obs = ftl_inference(ftl_true; ftl_prop = 1.0, ftl_error = 0.0)
 
 # #Plot check
 # scatter(ftl_true,ftl_obs)
@@ -89,7 +89,7 @@ ftl_obs = ftl_inference(ftl_true; ftl_prop = 0.5, ftl_error = 0.3)
 # 3.  Lock in known links ~ not sure this works 100%
 ###############################################################
 
-known_mask = select_known_links(Q_true; pct = 0.0, skew = :rand);
+known_mask = select_known_links(Q_true; pct = 0.5, skew = :high);
 heatmap(known_mask)
 
 ###############################################################
@@ -99,8 +99,8 @@ Q_est, err_trace  = estimate_Q_sa(A_bool, ftl_obs;
                         known_mask = known_mask,  # true/false links to lock
                         Q_known    = Q_true, # values for the locked links
                         alpha0 = 1.0, 
-                        steps = 15_000,
-                        wiggle  = 0.01)
+                        steps = 20_000,
+                        wiggle  = 0.05)
 
 # Smaller wiggle ⇒ each αᵢ is larger ⇒ the Dirichlet is concentrated near the current weights.
 # Larger wiggle ⇒ αᵢ shrinks ⇒ the Dirichlet is flatter, so proposed weights can differ a lot.
@@ -158,14 +158,18 @@ stats = evaluate_Q(Q_true, Q_est;
 
 values = [
     stats.mae,
+    stats.wmae,
     stats.rmse,
+    stats.wrmse,
     stats.r,
     stats.mean_KL
 ]
 df_stats = DataFrame(
     Metric = [
-        "Mean absolute error",
+        "Mean abs error",
+        "Weighted mean abs error",
         "Root-mean-sq error",
+        "Weighted root-mean-sq error",
         "Pearson R (weights)",
         "Mean KL divergence"
     ],
