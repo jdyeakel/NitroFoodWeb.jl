@@ -23,6 +23,7 @@ include("trophic_levels.jl")
 include("evaluate_Q.jl")
 include("select_known_links.jl")
 include("smartpath.jl")
+include("ftl_inference.jl")
 
 export
 nichemodelweb,
@@ -34,6 +35,7 @@ estimate_Q_sa,
 trophic_levels,
 evaluate_Q,
 select_known_links,
-smartpath
+smartpath,
+ftl_inference
 
 end # module NitroFoodWeb

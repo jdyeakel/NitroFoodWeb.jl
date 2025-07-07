@@ -24,7 +24,7 @@ C = 0.02;
 A, niche = nichemodelweb(S,C)
 A_bool = A .> 0
 # Get fractional trophic levels
-tltest = TrophInd(A)
+# tltest = TrophInd(A)
 tl = trophic_levels(A)
 # Sort by trophic level
 tlsp = sortperm(tl); 
@@ -33,14 +33,14 @@ tl = tl[tlsp];
 A = A[tlsp,tlsp];
 A_bool = A_bool[tlsp,tlsp];
 # Plot adjacency matrix
-p_a = heatmap(A);
+p_a = Plots.heatmap(A);
 
-# Create a uniformly random quantitative web
-# alpha >> 1 ~ diets forced to equal weights
-# alpha = 1 ~ uninformative, so diets uniformly distributed
+# Create a random quantitative web
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
-Q_true = quantitativeweb(A; alpha=0.5);
-p_q = heatmap(Q_true);
+# alpha = 1 ~ uninformative, so diets uniformly distributed
+# alpha >> 1 ~ diets forced to equal weights
+Q_true = quantitativeweb(A; alpha=1);
+p_q = Plots.heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
 # plot(p_a, p_q; layout = (2, 1), size = (400, 600))
@@ -54,10 +54,22 @@ histogram(vec(Q_true[(Q_true .> 0)]),bins=20)
 ftl_true = trophic_levels(Q_true)
 # scatter(tl,ftl)
 
+# A function to derive observed trophic levels
+##### We assume we know all primary producers #####
+# Allow a percentage of NON-PRIMARY PRODUCER trophic levels to be drawn: ftl_prop
+# Allow a certain amount of error on NON-PRIMARY PRODUCER observed trophic levels: ftl_error
+ftl_obs = ftl_inference(ftl_true; ftl_prop = 0.5, ftl_error = 0.3)
+
+# #Plot check
+# scatter(ftl_true,ftl_obs)
+# plot!(collect(1:5),collect(1:5))
+
 # Provide *actual* d15N values to each species based on fractional trophic level
 # enrichment per step (‰)
-ΔTN    = 3.5;
-d15N_true = ((ftl_true .- 1) .* ΔTN);
+# ΔTN    = 3.5;
+# d15N_true = ((ftl_true .- 1) .* ΔTN);
+
+# ftl_obs = 1 .+ d15N_true ./ ΔTN
 
 #Goal is to find the Q_true, which we assume is unknown
 # 1) start with random Q_est with equal weights... starting guess
@@ -77,15 +89,13 @@ d15N_true = ((ftl_true .- 1) .* ΔTN);
 # 3.  Lock in known links ~ not sure this works 100%
 ###############################################################
 
-known_mask = select_known_links(Q_true; pct = 0.2, skew = :rand);
+known_mask = select_known_links(Q_true; pct = 0.0, skew = :rand);
 heatmap(known_mask)
 
 ###############################################################
 # 4.  Estimate Q with simulated annealing
 ###############################################################
-Q_est, err_trace  = estimate_Q_sa(A_bool, 
-                        d15N_true;
-                        ΔTN     = ΔTN,
+Q_est, err_trace  = estimate_Q_sa(A_bool, ftl_obs;
                         known_mask = known_mask,  # true/false links to lock
                         Q_known    = Q_true, # values for the locked links
                         alpha0 = 1.0, 
@@ -111,7 +121,7 @@ plot!([minimum(ftl_true), maximum(ftl_true)], [minimum(ftl_true), maximum(ftl_tr
 #################################
 # PLOT Q WEIGHTS CORRELATION
 #################################
-
+ 
 # flatten matrices and collect indices ------------------------------------
 true_vec   = Q_true[Q_true .> 0]               # all non-zero true weights
 est_vec    = Q_est[Q_true .> 0]                # estimated counterparts
@@ -120,12 +130,12 @@ idx_known     = findall(known_vec)
 idx_unknown   = findall(.!known_vec)
 scatter(true_vec[idx_unknown], est_vec[idx_unknown];
         ms      = 3,  α = 0.6,
-        xscale  = :log10, yscale = :log10,
+        # xscale  = :log10, yscale = :log10,
         xlabel  = "true weight",
         ylabel  = "estimated weight",
         title   = "Per-link comparison",
-        xlims   = (0.01, 1.1),
-        ylims   = (0.01, 1.1),
+        xlims   = (0.0, 1.1),
+        ylims   = (0.0, 1.1),
         label   = "free links")
 scatter!(true_vec[idx_known], est_vec[idx_known];
          ms = 5, mc = :orange, markerstrokecolor = :black,

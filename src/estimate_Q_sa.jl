@@ -11,8 +11,7 @@ pre-specified *known* links.
   existence.
 """
 function estimate_Q_sa(
-        A::AbstractMatrix{Bool}, d15N_obs::AbstractVector;
-        ΔTN::Real            = 3.5,
+        A::AbstractMatrix{Bool}, ftl_obs::AbstractVector;
         alpha0::Real         = 0.5,
         steps::Int           = 10_000,
         wiggle::Real         = 0.05,
@@ -29,6 +28,9 @@ function estimate_Q_sa(
             v[i] = ϵ
         end
     end
+
+    # Define known observations
+    observed_idx = findall(!isnan,ftl_obs)
 
     # ------------------------------------------------------------------ #
     # 0. initial quantitative guess                                      #
@@ -58,8 +60,8 @@ function estimate_Q_sa(
     # ------------------------------------------------------------------ #
     # 1. helpers                                                         #
     # ------------------------------------------------------------------ #
-    ftl_obs = 1 .+ d15N_obs ./ ΔTN
-    sse(Qm) = sum((trophic_levels(Qm) .- ftl_obs).^2)
+    # ftl_obs = 1 .+ d15N_obs ./ ΔTN
+    sse(Qm) = sum((trophic_levels(Qm)[observed_idx] .- ftl_obs[observed_idx]).^2)
 
     err       = sse(Q)
     best_err  = err
