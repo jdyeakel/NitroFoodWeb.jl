@@ -21,41 +21,41 @@ using ProgressMeter
 using Statistics
 using UnicodePlots
 
-
 # PARALLEL VERSION - INCLUDING ALPHA_TRUE LOOP
 
 ###############################################################################
+###############################################################################
 # experiment constants
 ###############################################################################
-S, C         = 100, 0.02;
-alpha_true   = 0.5;          # <—— three diet breadths to test
-pct          = 0.0;             # fraction of links locked
-n_rep        = 100;
+S, C          = 100, 0.02;
+alpha_list    = [0.5,1.0,10.0];          # single diet breadth to test
+pct_grid      = 0.0:0.05:0.50;             # fraction of links locked
+n_rep         = 100;
 
-ftl_prop_list      = 0.25:0.05:1.0;      # Assume perfect knowledge of ftls
-ftl_error_list     = 0.0:0.05:0.25;
+ftl_prop      = 1.0;                       # Assume perfect knowledge of ftls
+ftl_error     = 0.0;
 
 steps_sa      = 20_000;
 wiggle_sa     = 0.05;
 # ΔTN           = 3.5;
 base_seed     = 20250624;
 
-skew_setting  = "rand";
+skew_setting  = "randsp";
 
-ftlp_param = repeat(ftl_prop_list, inner = length(ftl_error_list)*n_rep)
-ftle_param   = repeat(repeat(ftl_error_list, inner = n_rep), outer = length(ftl_prop_list))
-rep_param   = repeat(collect(1:n_rep),  outer = length(ftl_prop_list)*length(ftl_error_list))
+alpha_param = repeat(alpha_list, inner = length(pct_grid)*n_rep)
+pct_param   = repeat(repeat(pct_grid, inner = n_rep), outer = length(alpha_list))
+rep_param   = repeat(collect(1:n_rep),  outer = length(alpha_list)*length(pct_grid))
 
-@assert length(ftlp_param) == length(ftle_param) == length(rep_param)
-Nruns = length(ftlp_param)
+@assert length(alpha_param) == length(pct_param) == length(rep_param)
+Nruns = length(alpha_param)
 
 
 ###############################################################################
 # pre-allocate result arrays (thread-safe, no push!)
 ###############################################################################
-ftlp_v = Vector{Float64}(undef, Nruns);
-ftle_v   = Vector{Float64}(undef, Nruns);
+pct_v   = Vector{Float64}(undef, Nruns);
 rep_v   = Vector{Int}(undef, Nruns);
+alpha_v = Vector{Float64}(undef, Nruns);
 r2_v    = Vector{Float64}(undef, Nruns);
 mae_v    = Vector{Float64}(undef, Nruns);
 wmae_v    = Vector{Float64}(undef, Nruns);
@@ -63,6 +63,9 @@ rmse_v   = Vector{Float64}(undef, Nruns);
 wrmse_v   = Vector{Float64}(undef, Nruns);
 meanKL_v = Vector{Float64}(undef, Nruns);
 
+###############################################################################
+# threaded sweep
+###############################################################################
 @showprogress Threads.@threads for idx in 1:Nruns
     # decode flat index -> (ia , ipct , rep)
     # rep  = (idx-1)              % n_rep                + 1
@@ -72,9 +75,10 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     # alpha_true = alpha_list[ia]
     # pct        = pct_grid[ipct]
 
-    ftl_prop  = ftlp_param[idx]      # ← use the pre-expanded vector
-    ftl_error = ftle_param[idx]
-    rep       = rep_param[idx]
+    alpha_true = alpha_param[idx]
+    pct    = pct_param[idx]
+    rep    = rep_param[idx]
+
 
     rng = MersenneTwister(hash((base_seed, Threads.threadid(), idx)))
 
@@ -109,8 +113,8 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     wrmse_Q  = stats.wrmse;
     meanKL_Q = stats.mean_KL;
 
-    ftlp_v[idx]   = ftl_prop;
-    ftle_v[idx] = ftl_error;
+    alpha_v[idx]   = alpha_true;
+    pct_v[idx] = pct;
     rep_v[idx] = rep;
     r2_v[idx]  = r2_Q;
     mae_v[idx] = mae_Q;
@@ -120,19 +124,24 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     meanKL_v[idx] = meanKL_Q;
 end
 
-
-# #save data file
-filename = smartpath("../data/trophiclevelerror_$(skew_setting).jld")
-@save filename S C alpha pct ftl_prop_list ftl_error_list n_rep steps_sa wiggle_sa base_seed skew_setting ftlp_v ftle_v rep_v r2_v mae_v wmae_v rmse_v wrmse_v meanKL_v
-
-# #load data file
-skew_setting = "rand";
-filename = smartpath("../data/trophiclevelerror_$(skew_setting).jld")
-@load filename S C alpha pct ftl_prop_list ftl_error_list n_rep steps_sa wiggle_sa base_seed skew_setting ftlp_v ftle_v rep_v r2_v mae_v wmae_v rmse_v wrmse_v meanKL_v
+#save data file
+filename = smartpath("../data/alphaknown_setalpha_$(skew_setting).jld")
+@save filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ftl_prop ftl_error base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
 
 
-df     = DataFrame(ftl_prop = ftlp_v,
-                  ftl_error   = ftle_v,
+
+skew_setting = :randsp;
+filename = smartpath("../data/alphaknown_setalpha_$(skew_setting).jld")
+@load filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ftl_prop ftl_error base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
+
+
+
+###############################################################################
+# build DataFrame, dropping the NaN rows
+###############################################################################
+
+df     = DataFrame(alpha = alpha_v,
+                  pct   = pct_v,
                   rep   = rep_v,
                   R2    = r2_v,
                   MAE   = mae_v,
@@ -143,7 +152,7 @@ df     = DataFrame(ftl_prop = ftlp_v,
 
 
 df_summary = combine(
-  DataFrames.groupby(df, [:ftl_prop, :ftl_error]),
+  DataFrames.groupby(df, [:alpha, :pct]),
 
   # R²: drop any non-finite values
   :R2    => (x -> mean(filter(isfinite,    x))) => :mean_R2,
@@ -169,51 +178,49 @@ df_summary = combine(
 )
 
 
-nerrs = length(ftl_error_list)                 # number of FTL‑error levels
-colmap = cgrad(:viridis, nerrs; categorical = true)   # distinct colours
-getcol(i) = colmap[i]                          # 1‑based colour fetch
+
+println("\nMean ± SD of R² on UNKNOWN links")
+show(df_summary, allrows = true, allcols = true)
+
+###############################################################################
+# plot three curves with UnicodePlots
+###############################################################################
 
 #R2
 p = nothing;
-for (i, err) in enumerate(ftl_error_list)
-
-    sub = df_summary[df_summary.ftl_error .== err, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if p === nothing
-        p = plot(sub.ftl_prop, sub.mean_R2;
-                 xlabel = "Proportion TL known",
+        p = plot(sub.pct, sub.mean_R2;
+                 xlabel = "Prop. links known",
                  ylabel = "mean R²",
-                 color  = getcol(i),
-                 label  = "err = $err",
+                 label  = "α = $α",
                  size   = (500, 400),
-                 frame  = :box,
-                 width  = 2);
+                 frame = :box,
+                 width = 2);
     else
-        plot!(p, sub.ftl_prop, sub.mean_R2;
-              color = getcol(i),
-              label = "err = $err",
+        plot!(p, sub.pct, sub.mean_R2;
+              label = "α = $α",
               width = 2);
     end
 end
 
 #MAE
 pmae = nothing;
-for (i, err) in enumerate(ftl_error_list)
-
-    sub = df_summary[df_summary.ftl_error .== err, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if pmae === nothing
-        pmae = plot(sub.ftl_prop, sub.mean_MAE;
-                 xlabel = "Proportion TL known",
+        pmae = plot(sub.pct, sub.mean_MAE;
+                 xlabel = "Prop. links known",
                  ylabel = "mean MAE",
-                 color  = getcol(i),
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pmae, sub.ftl_prop, sub.mean_MAE;
-              color = getcol(i),
+        plot!(pmae, sub.pct, sub.mean_MAE;
               label = false,
               width = 2);
     end
@@ -221,22 +228,19 @@ end
 
 #WMAE
 pwmae = nothing;
-for (i, err) in enumerate(ftl_error_list)
-
-    sub = df_summary[df_summary.ftl_error .== err, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if pwmae === nothing
-        pwmae = plot(sub.ftl_prop, sub.mean_WMAE;
-                 xlabel = "Proportion TL known",
+        pwmae = plot(sub.pct, sub.mean_WMAE;
+                 xlabel = "Prop. links known",
                  ylabel = "mean WMAE",
-                 color  = getcol(i),
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pwmae, sub.ftl_prop, sub.mean_WMAE;
-              color = getcol(i),
+        plot!(pwmae, sub.pct, sub.mean_WMAE;
               label = false,
               width = 2);
     end
@@ -244,22 +248,19 @@ end
 
 #RMSE
 prmse = nothing;
-for (i, err) in enumerate(ftl_error_list)
-
-    sub = df_summary[df_summary.ftl_error .== err, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if prmse === nothing
-        prmse = plot(sub.ftl_prop, sub.mean_RMSE;
-                 xlabel = "Proportion TL known",
+        prmse = plot(sub.pct, sub.mean_RMSE;
+                 xlabel = "Prop. links known",
                  ylabel = "mean RMSE",
-                 color  = getcol(i),
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(prmse, sub.ftl_prop, sub.mean_RMSE;
-              color = getcol(i),
+        plot!(prmse, sub.pct, sub.mean_RMSE;
               label = false,
               width = 2);
     end
@@ -267,22 +268,19 @@ end
 
 #WRMSE
 pwrmse = nothing;
-for (i, err) in enumerate(ftl_error_list)
-
-    sub = df_summary[df_summary.ftl_error .== err, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if pwrmse === nothing
-        pwrmse = plot(sub.ftl_prop, sub.mean_WRMSE;
-                 xlabel = "Proportion TL known",
+        pwrmse = plot(sub.pct, sub.mean_WRMSE;
+                 xlabel = "Prop. links known",
                  ylabel = "mean WRMSE",
-                 color  = getcol(i),
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pwrmse, sub.ftl_prop, sub.mean_WRMSE;
-              color = getcol(i),
+        plot!(pwrmse, sub.pct, sub.mean_WRMSE;
               label = false,
               width = 2);
     end
@@ -291,22 +289,19 @@ end
 
 #MEAN KL
 pkl = nothing;
-for (i, err) in enumerate(ftl_error_list)
-
-    sub = df_summary[df_summary.ftl_error .== err, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if pkl === nothing
-        pkl = plot(sub.ftl_prop, sub.mean_KL;
-                 xlabel = "Proportion TL known",
+        pkl = plot(sub.pct, sub.mean_KL;
+                 xlabel = "Prop. links known",
                  ylabel = "mean KL",
-                 color  = getcol(i),
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pkl, sub.ftl_prop, sub.mean_KL;
-              color = getcol(i),
+        plot!(pkl, sub.pct, sub.mean_KL;
               label = false,
               width = 2);
     end
@@ -323,5 +318,6 @@ combplot = plot(
 display(combplot)
 
 
-filename = smartpath("../figures/fig_trophiclevelerror_$(skew_setting).pdf")
+filename = smartpath("../figures/fig_alphaknown_setalpha_$(skew_setting).pdf")
 Plots.savefig(combplot,filename)
+

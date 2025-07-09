@@ -93,7 +93,7 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     # ftl_obs    = 1 .+ d15N_true ./ ΔTN
 
     # --- lock links ------------------------------------------------------
-    mask       = select_known_links(Q_true; pct = pct, skew = Symbol(skew_setting), rng = rng)
+    mask       = select_known_links(Q_true, ftl_obs; pct = pct, skew = Symbol(skew_setting), rng = rng)
 
     # --- anneal ----------------------------------------------------------
     Q_est, _   = estimate_Q_sa(A_bool, ftl_obs;
@@ -107,9 +107,9 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     stats = evaluate_Q(Q_true, Q_est; known_mask = mask, eps = 1e-12)
     r2_Q    = stats.r;
     mae_Q   = stats.mae;
-    wmae_Q   = stats.mae;
+    wmae_Q   = stats.wmae;
     rmse_Q  = stats.rmse;
-    wrmse_Q  = stats.rmse;
+    wrmse_Q  = stats.wrmse;
     meanKL_Q = stats.mean_KL;
 
     alpha_v[idx]   = alpha_true;

@@ -22,9 +22,16 @@ function estimate_Q_sa(
 
     S, ϵ = size(A, 1), 1e-12
 
+    # scrub!(v, ϵ) = @inbounds for i in eachindex(v)
+    #     y = v[i]
+    #     if !isfinite(y) || y <= 0
+    #         v[i] = ϵ
+    #     end
+    # end
+
     scrub!(v, ϵ) = @inbounds for i in eachindex(v)
         y = v[i]
-        if !isfinite(y) || y <= 0
+        if !isfinite(y) || y < 0           # strictly < 0
             v[i] = ϵ
         end
     end

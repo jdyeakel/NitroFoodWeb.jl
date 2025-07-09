@@ -10,7 +10,7 @@ Arguments
 * `skew`  – `:high` (prefer large weights), `:rand` (uniform random), or
             `:percol` (top prey per consumer until quota hit).
 """
-function select_known_links(Q_prior;
+function select_known_links(Q_prior, ftl_obs;
                             pct  = 0.15,
                             skew = :high,
                             rng  = Random.GLOBAL_RNG)
@@ -19,6 +19,7 @@ function select_known_links(Q_prior;
     m  = falses(S, S)      # output mask
     links = findall(Q_prior .> 0)
     n_known = round(Int, pct * length(links))
+    LI = LinearIndices(Q_prior) # helper for Cartesian→linear
 
     if skew == :rand
         chosen = sample(rng, links, n_known; replace = false)
@@ -43,6 +44,34 @@ function select_known_links(Q_prior;
             end
         end
         chosen = shuffle!(rng, chosen)[1:min(n_known, length(chosen))]
+    
+    elseif skew == :randsp
+        
+        # Select pct species at random and assume their ENTIRE diet is known
+        chosen = Int[]
+        n_sp   = max(1, round(Int, pct * S))                 # quota on species
+        species = sample(rng, 1:S, n_sp; replace = false)
+        
+        for j in species
+            prey = findall(Q_prior[:, j] .> 0)
+            append!(chosen, LI[CartesianIndex.(prey, fill(j, length(prey)))])
+        end
+
+    elseif skew == :apexsp
+
+        # Select pct species but biased towards higher trophic level and assume their ENTIRE diet is known. Requires ftl_obs
+        chosen = Int[]
+        
+        n_sp   = max(1, round(Int, pct * S))
+        tl     = copy(ftl_obs)
+
+        # Bias towards apex species
+        species = sample(rng, 1:S, Weights(tl ./ sum(tl)), n_sp; replace = false)
+
+        for j in species
+            prey = findall(Q_prior[:, j] .> 0)
+            append!(chosen, LI[CartesianIndex.(prey, fill(j, length(prey)))])
+        end
 
     else
         error("unknown skew=: $skew")

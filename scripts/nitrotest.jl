@@ -39,7 +39,7 @@ p_a = Plots.heatmap(A);
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # alpha >> 1 ~ diets forced to equal weights
-Q_true = quantitativeweb(A; alpha=0.5);
+Q_true = quantitativeweb(A; alpha=1.0);
 p_q = Plots.heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
@@ -84,13 +84,17 @@ ftl_obs = ftl_inference(ftl_true; ftl_prop = 1.0, ftl_error = 0.0)
 # skew = :rand; 1. Collect every non-zero link in Q_prior. 2. Draw pct × (# links) without replacement using sample.
 # skew = :high; 1. Rank all links by descending weight. 2. Pick the first pct × (# links) of that sorted list.
 # skew = :percol; 1. For each consumer j: find its prey, sort them by weight, and keep the top ⌈pct·(# total links)/S⌉ prey (or all prey if fewer). 2. Pool those top-k sets across consumers. 3. Shuffle the pooled list, then trim to the global quota pct × (# links).
+# skew = :randsp; select pct SPECIES and know their full diets
+# skew = :apexsp; select pct SPECIES with choices biased towards apex pos
 
 ###############################################################
 # 3.  Lock in known links ~ not sure this works 100%
 ###############################################################
 
-known_mask = select_known_links(Q_true; pct = 0.5, skew = :high);
-heatmap(known_mask)
+known_mask = select_known_links(Q_true, ftl_obs; pct = 0.25, skew = :apexsp);
+p_m = Plots.heatmap(known_mask);
+
+# plot(p_a, p_m; layout = (2, 1), size = (400, 600))
 
 ###############################################################
 # 4.  Estimate Q with simulated annealing
@@ -106,7 +110,6 @@ Q_est, err_trace  = estimate_Q_sa(A_bool, ftl_obs;
 # Larger wiggle ⇒ αᵢ shrinks ⇒ the Dirichlet is flatter, so proposed weights can differ a lot.
 
 plot(err_trace,yscale=:log10)
-
 
 
 #################################
