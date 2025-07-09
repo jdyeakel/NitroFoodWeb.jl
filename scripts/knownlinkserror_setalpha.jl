@@ -28,11 +28,11 @@ using UnicodePlots
 # experiment constants
 ###############################################################################
 S, C          = 100, 0.02;
-alpha_list    = [0.5,1.0,10.0];          # single diet breadth to test
+alpha_list    = [0.5];          # single diet breadth to test
 pct_grid      = 0.0:0.05:0.50;             # fraction of links locked
 n_rep         = 100;
 
-ftl_prop      = 1.0;                       # Assume perfect knowledge of ftls
+ftl_prop      = 0.25;                       # Assume perfect knowledge of ftls
 ftl_error     = 0.0;
 
 steps_sa      = 20_000;
@@ -40,7 +40,7 @@ wiggle_sa     = 0.05;
 # ΔTN           = 3.5;
 base_seed     = 20250624;
 
-skew_setting  = "randsp";
+skew_setting  = "apexsp";
 
 alpha_param = repeat(alpha_list, inner = length(pct_grid)*n_rep)
 pct_param   = repeat(repeat(pct_grid, inner = n_rep), outer = length(alpha_list))
@@ -97,10 +97,10 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     mask       = select_known_links(Q_true, ftl_obs; pct = pct, skew = Symbol(skew_setting), rng = rng)
 
     # --- anneal ----------------------------------------------------------
-    Q_est, _   = estimate_Q_sa(A_bool, ftl_obs;
+    Q0 = quantitativeweb(A; alpha = 1.0, rng = rng)
+    Q_est, _   = estimate_Q_sa(A_bool, ftl_obs, Q0;
                                known_mask = mask,
                                Q_known    = Q_true,   # comment to let SA estimate them
-                               alpha0     = 1.0, #uninformative prior
                                steps      = steps_sa,
                                wiggle     = wiggle_sa,
                                rng        = rng)
@@ -318,6 +318,6 @@ combplot = plot(
 display(combplot)
 
 
-filename = smartpath("../figures/fig_alphaknown_setalpha_$(skew_setting).pdf")
+filename = smartpath("../figures/fig_alphaknown_$(skew_setting).pdf")
 Plots.savefig(combplot,filename)
 

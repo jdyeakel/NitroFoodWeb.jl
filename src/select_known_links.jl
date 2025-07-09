@@ -63,10 +63,17 @@ function select_known_links(Q_prior, ftl_obs;
         chosen = Int[]
         
         n_sp   = max(1, round(Int, pct * S))
-        tl     = copy(ftl_obs)
+        # tl     = copy(ftl_obs)
+        # ---- clean trophic-level weights ---------------------------------
+        tl_clean = copy(ftl_obs)
+        finite_mask = .!isnan.(tl_clean)
+        medTL = median(tl_clean[finite_mask])          # robust mid-range value
+        replace!(tl_clean, NaN => medTL)               # NaNs → median
+
+        w = tl_clean .+ eps()                          # strictly positive
 
         # Bias towards apex species
-        species = sample(rng, 1:S, Weights(tl ./ sum(tl)), n_sp; replace = false)
+        species = sample(rng, 1:S, Weights(w), n_sp; replace = false)
 
         for j in species
             prey = findall(Q_prior[:, j] .> 0)

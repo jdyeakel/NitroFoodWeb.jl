@@ -11,8 +11,7 @@ pre-specified *known* links.
   existence.
 """
 function estimate_Q_sa(
-        A::AbstractMatrix{Bool}, ftl_obs::AbstractVector;
-        alpha0::Real         = 0.5,
+        A::AbstractMatrix{Bool}, ftl_obs::AbstractVector, Q0::AbstractMatrix;
         steps::Int           = 10_000,
         wiggle::Real         = 0.05,
         known_mask::AbstractMatrix{Bool} = falses(size(A)),
@@ -42,7 +41,8 @@ function estimate_Q_sa(
     # ------------------------------------------------------------------ #
     # 0. initial quantitative guess                                      #
     # ------------------------------------------------------------------ #
-    Q = quantitativeweb(A; alpha = alpha0, rng = rng)
+    # Q = quantitativeweb(A; alpha = alpha0, rng = rng)
+    Q = Q0
 
     if Q_known !== nothing
         Q[known_mask] .= Q_known[known_mask]

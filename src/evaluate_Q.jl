@@ -29,7 +29,16 @@ function evaluate_Q(Q_true::AbstractMatrix,
     end
 
     # ------------------------------------------------------------------ #
-    # 2.  Column-wise KL on UNKNOWN portion (renormalised)               #
+    # 2. Link-level KL on UNKNOWN portion (renormalised)               #
+    # ------------------------------------------------------------------ #
+    t_vec = true_vec .+ eps
+    e_vec = est_vec  .+ eps
+    t_vec ./= sum(t_vec)
+    e_vec ./= sum(e_vec)
+    link_KL = sum(t_vec .* log.(t_vec ./ e_vec))
+
+    # ------------------------------------------------------------------ #
+    # 3.  Column-wise KL on UNKNOWN portion (renormalised)               #
     # ------------------------------------------------------------------ #
     #the average, over all consumers j of the Kullback–Leibler divergence between the true and estimated diet‐share distributions
 
@@ -56,7 +65,7 @@ function evaluate_Q(Q_true::AbstractMatrix,
     med = median(KL)
     bad = findall(KL .> 3med)
 
-    return (; mae, wmae, rmse, wrmse, r, mean_KL, KL, bad)
+    return (; mae, wmae, rmse, wrmse, r, link_KL, mean_KL, KL, bad)
 end
 
 

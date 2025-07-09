@@ -96,10 +96,10 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     mask       = select_known_links(Q_true, ftl_obs; pct = pct, skew = Symbol(skew_setting), rng = rng)
 
     # --- anneal ----------------------------------------------------------
-    Q_est, _   = estimate_Q_sa(A_bool, ftl_obs;
+    Q0 = quantitativeweb(A; alpha = 1.0, rng = rng)
+    Q_est, _   = estimate_Q_sa(A_bool, ftl_obs, Q0;
                                known_mask = mask,
                                Q_known    = Q_true,   # comment to let SA estimate them
-                               alpha0     = 1.0, #uninformative prior
                                steps      = steps_sa,
                                wiggle     = wiggle_sa,
                                rng        = rng)

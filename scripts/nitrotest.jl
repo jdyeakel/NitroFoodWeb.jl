@@ -58,7 +58,7 @@ ftl_true = trophic_levels(Q_true)
 ##### We assume we know all primary producers #####
 # Allow a percentage of NON-PRIMARY PRODUCER trophic levels to be drawn: ftl_prop
 # Allow a certain amount of error on NON-PRIMARY PRODUCER observed trophic levels: ftl_error
-ftl_obs = ftl_inference(ftl_true; ftl_prop = 1.0, ftl_error = 0.0)
+ftl_obs = ftl_inference(ftl_true; ftl_prop = 0.5, ftl_error = 0.0)
 
 # #Plot check
 # scatter(ftl_true,ftl_obs)
@@ -99,10 +99,14 @@ p_m = Plots.heatmap(known_mask);
 ###############################################################
 # 4.  Estimate Q with simulated annealing
 ###############################################################
-Q_est, err_trace  = estimate_Q_sa(A_bool, ftl_obs;
+
+# Propose an initial Q0
+Q0 = quantitativeweb(A; alpha = 1.0)
+
+# Simulated annealing - find a best-fit Q_est
+Q_est, err_trace  = estimate_Q_sa(A_bool, ftl_obs, Q0;
                         known_mask = known_mask,  # true/false links to lock
                         Q_known    = Q_true, # values for the locked links
-                        alpha0 = 1.0, 
                         steps = 20_000,
                         wiggle  = 0.05)
 
