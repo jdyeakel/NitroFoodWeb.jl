@@ -28,7 +28,7 @@ using UnicodePlots
 ###############################################################################
 S, C            = 100, 0.02
 alpha           = 0.5                # single diet breadth to test
-n_rep           = 50                 # reps per parameter combination
+n_rep           = 100                 # reps per parameter combination
 
 # PARAMETERS TO SWEEP
 wiggle_sa       = 0.05               # single SA wiggle value

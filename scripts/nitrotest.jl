@@ -39,7 +39,7 @@ p_a = Plots.heatmap(A);
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # alpha >> 1 ~ diets forced to equal weights
-Q_true = quantitativeweb(A; alpha=1.0);
+Q_true = quantitativeweb(A; alpha = 0.5, method = :rand);
 p_q = Plots.heatmap(Q_true);
 
 # Plot Adjacency and Quantitative
@@ -93,10 +93,10 @@ ftl_obs = ftl_inference(ftl_true; ftl_prop = 1.0, ftl_error = 0.0)
 # 3.  Lock in known links ~ not sure this works 100%
 ###############################################################
 
-known_mask = select_known_links(Q_true, ftl_obs; pct = 0.1, skew = :none);
+known_mask = select_known_links(Q_true, ftl_obs; pct = 0.0, skew = :rand);
 p_m = Plots.heatmap(known_mask);
 
-plot(p_a, p_m; layout = (2, 1), size = (400, 600))
+# plot(p_a, p_m; layout = (2, 1), size = (400, 600))
 
 # test mask
 # pct   = 0.10          # 10 % of realised links
@@ -123,7 +123,7 @@ plot(p_a, p_m; layout = (2, 1), size = (400, 600))
 ###############################################################
 
 # Propose an initial Q0 - uninformative
-Q0 = quantitativeweb(A; alpha = 1.0)
+# Q0 = quantitativeweb(A; alpha = 1.0)
 
 # Propose an initial Q0 - informative (divergence = 0) to uninformative (divergence = 1)
 Q0 = make_prior_Q0(Q_true; deviation = 0.0);
