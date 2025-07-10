@@ -58,7 +58,7 @@ ftl_true = trophic_levels(Q_true)
 ##### We assume we know all primary producers #####
 # Allow a percentage of NON-PRIMARY PRODUCER trophic levels to be drawn: ftl_prop
 # Allow a certain amount of error on NON-PRIMARY PRODUCER observed trophic levels: ftl_error
-ftl_obs = ftl_inference(ftl_true; ftl_prop = 0.5, ftl_error = 0.0)
+ftl_obs = ftl_inference(ftl_true; ftl_prop = 1.0, ftl_error = 0.0)
 
 # #Plot check
 # scatter(ftl_true,ftl_obs)
@@ -82,6 +82,8 @@ ftl_obs = ftl_inference(ftl_true; ftl_prop = 0.5, ftl_error = 0.0)
 
 # Specify known links using one of the following methods:
 # skew = :rand; 1. Collect every non-zero link in Q_prior. 2. Draw pct × (# links) without replacement using sample.
+# skew = :basalrand; Same as :rand but bias towards lower trophic level links
+# skew = :apexrand; Same as :rand but bias towards higher trophic level links
 # skew = :high; 1. Rank all links by descending weight. 2. Pick the first pct × (# links) of that sorted list.
 # skew = :percol; 1. For each consumer j: find its prey, sort them by weight, and keep the top ⌈pct·(# total links)/S⌉ prey (or all prey if fewer). 2. Pool those top-k sets across consumers. 3. Shuffle the pooled list, then trim to the global quota pct × (# links).
 # skew = :randsp; select pct SPECIES and know their full diets
@@ -91,17 +93,43 @@ ftl_obs = ftl_inference(ftl_true; ftl_prop = 0.5, ftl_error = 0.0)
 # 3.  Lock in known links ~ not sure this works 100%
 ###############################################################
 
-known_mask = select_known_links(Q_true, ftl_obs; pct = 0.25, skew = :apexsp);
+known_mask = select_known_links(Q_true, ftl_obs; pct = 0.1, skew = :none);
 p_m = Plots.heatmap(known_mask);
 
-# plot(p_a, p_m; layout = (2, 1), size = (400, 600))
+plot(p_a, p_m; layout = (2, 1), size = (400, 600))
+
+# test mask
+# pct   = 0.10          # 10 % of realised links
+# reps  = 20            # how many random masks to try
+# skews = (:rand, :basalrand, :apexrand)
+
+# for skew in skews
+#     mean_TL = Float64[]
+#     for r = 1:reps
+#         mask = select_known_links(Q_true, ftl_obs; pct = pct,
+#                                   skew = skew,
+#                                   rng  = MersenneTwister(r))
+
+#         # consumer column of every selected link
+#         cols = getindex.(findall(mask), 2)
+#         push!(mean_TL, mean(ftl_obs[cols]))
+#     end
+#     println(lpad(skew,10), "  mean TL of chosen consumers = ",
+#             round(mean(mean_TL); digits = 3))
+# end
 
 ###############################################################
 # 4.  Estimate Q with simulated annealing
 ###############################################################
 
-# Propose an initial Q0
+# Propose an initial Q0 - uninformative
 Q0 = quantitativeweb(A; alpha = 1.0)
+
+# Propose an initial Q0 - informative (divergence = 0) to uninformative (divergence = 1)
+Q0 = make_prior_Q0(Q_true; deviation = 0.0);
+p_q0 = Plots.heatmap(Q0);
+# plot(p_q, p_q0; layout = (2, 1), size = (400, 600))
+# scatter(vec(Q_true),vec(Q0))
 
 # Simulated annealing - find a best-fit Q_est
 Q_est, err_trace  = estimate_Q_sa(A_bool, ftl_obs, Q0;

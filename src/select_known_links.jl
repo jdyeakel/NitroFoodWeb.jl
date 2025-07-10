@@ -22,7 +22,40 @@ function select_known_links(Q_prior, ftl_obs;
     LI = LinearIndices(Q_prior) # helper for Cartesian→linear
 
     if skew == :rand
+
         chosen = sample(rng, links, n_known; replace = false)
+
+    elseif skew == :basalrand
+
+        # ----------------  pick random LINKS, bias to low-TL consumers  -----
+        tl_clean = copy(ftl_obs)
+        finite   = .!isnan.(tl_clean)
+        medTL    = median(tl_clean[finite])
+        replace!(tl_clean, NaN => medTL)            # NaNs → median TL
+
+        # map every realised link to its consumer column → assign weight
+        cols = getindex.(links, 2)         # column (consumer) for each link
+        maxTL   = maximum(tl_clean)
+        # w_links = (maxTL .- tl_clean[cols]) .+ eps()  # higher weight for basal TL
+        # Or use power law to increase contrast on the weights function
+        p = 2.0;
+        w_links = ((maxTL .- tl_clean[cols]).^p) .+ eps()
+        chosen  = sample(rng, links, Weights(w_links), n_known; replace = false)
+
+    elseif skew == :apexrand
+
+        # ----------------  pick random LINKS, bias to high-TL consumers  ----
+        tl_clean = copy(ftl_obs)
+        finite   = .!isnan.(tl_clean)
+        medTL    = median(tl_clean[finite])
+        replace!(tl_clean, NaN => medTL)
+
+        cols = getindex.(links, 2)         # column (consumer) for each link        
+        # w_links = tl_clean[cols] .+ eps()            # higher weight for apex TL
+        # Or use power law to increase contrast on the weights function
+        p = 2.0;
+        w_links = (tl_clean[cols] .^ p) .+ eps()
+        chosen  = sample(rng, links, Weights(w_links), n_known; replace = false)
 
     elseif skew == :high
         # sort by descending weight, then pick first n_known
@@ -79,6 +112,10 @@ function select_known_links(Q_prior, ftl_obs;
             prey = findall(Q_prior[:, j] .> 0)
             append!(chosen, LI[CartesianIndex.(prey, fill(j, length(prey)))])
         end
+    
+    elseif skew == :none
+
+        chosen = Int[];
 
     else
         error("unknown skew=: $skew")
