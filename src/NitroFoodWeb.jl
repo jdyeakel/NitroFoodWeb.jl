@@ -26,8 +26,7 @@ include("smartpath.jl")
 include("ftl_inference.jl")
 include("make_prior_Q0.jl")
 
-include("rohr_lfunc.jl")
-include("rohr_fc.jl")
+include("rohrfunctions.jl")
 
 export
 nichemodelweb,
@@ -42,7 +41,7 @@ select_known_links,
 smartpath,
 ftl_inference,
 make_prior_Q0,
-rohr_lfunc,
-rohr_fc
+rohr_negloglik,
+rohr_fraction_correct
 
 end # module NitroFoodWeb
