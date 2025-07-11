@@ -213,7 +213,7 @@ for α in alpha_list
         p = plot(sub.deviation, sub.mean_R2;
                  xlabel = "Prior deviation",
                  ylabel = "mean R²",
-                 label  = "α = $α",
+                 label  = "Allometric",
                  size   = (500, 400),
                  frame = :box,
                  width = 2);

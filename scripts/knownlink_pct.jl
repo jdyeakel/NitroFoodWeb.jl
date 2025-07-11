@@ -27,63 +27,68 @@ using UnicodePlots
 ###############################################################################
 # experiment constants
 ###############################################################################
-S, C            = 100, 0.02
-alpha           = 0.5                # single diet breadth to test
-n_rep           = 100                 # reps per parameter combination
+S, C          = 100, 0.02;
+alpha_list    = [0.5, 1.0, 10.0];          # <—— three diet breadths to test
+pct_grid      = 0.0:0.05:0.50;             # fraction of links locked
+n_rep         = 50;
 
-# PARAMETERS TO SWEEP
-wiggle_sa       = 0.05               # single SA wiggle value
-Q0_div_list     = 0.0:0.25:1.0       # degree of deviation in the prior
-pct_list        = 0.0:0.1:0.5        # fraction of links locked (known)
+ftl_prop      = 1.0;                       # Assume perfect knowledge of ftls
+ftl_error     = 0.0;
 
-ftl_prop        = 1.0                # Assume perfect knowledge of ftls
-ftl_error       = 0.0
+steps_sa      = 20_000;
+wiggle_sa     = 0.05;
+# ΔTN           = 3.5;
+base_seed     = 20250624;
 
-steps_sa        = 20_000
-base_seed       = 20250624
-skew_setting    = "rand"
+skew_setting  = "rand";
 
-# --------------------------------------------------------------------------- #
-# build parameter grids                                                       #
-# --------------------------------------------------------------------------- #
-Q0_param  = repeat(repeat(Q0_div_list, inner = n_rep), outer = length(pct_list))
-pct_param = repeat(pct_list,               inner = length(Q0_div_list) * n_rep)
-rep_param = repeat(collect(1:n_rep), outer = length(Q0_div_list) * length(pct_list))
+alpha_param = repeat(alpha_list, inner = length(pct_grid)*n_rep)
+pct_param   = repeat(repeat(pct_grid, inner = n_rep), outer = length(alpha_list))
+rep_param   = repeat(collect(1:n_rep),  outer = length(alpha_list)*length(pct_grid))
 
-@assert length(Q0_param) == length(pct_param) == length(rep_param)
-Nruns = length(rep_param)
+@assert length(alpha_param) == length(pct_param) == length(rep_param)
+Nruns = length(alpha_param)
 
 
 ###############################################################################
 # pre-allocate result arrays (thread-safe, no push!)
 ###############################################################################
+pct_v   = Vector{Float64}(undef, Nruns);
 rep_v   = Vector{Int}(undef, Nruns);
+alpha_v = Vector{Float64}(undef, Nruns);
 r2_v    = Vector{Float64}(undef, Nruns);
 mae_v    = Vector{Float64}(undef, Nruns);
 wmae_v    = Vector{Float64}(undef, Nruns);
 rmse_v   = Vector{Float64}(undef, Nruns);
 wrmse_v   = Vector{Float64}(undef, Nruns);
 meanKL_v = Vector{Float64}(undef, Nruns);
-pct_v    = Vector{Float64}(undef, Nruns)
-Q0_div_v = Vector{Float64}(undef, Nruns)
 
 ###############################################################################
 # threaded sweep
 ###############################################################################
 @showprogress Threads.@threads for idx in 1:Nruns
+    # decode flat index -> (ia , ipct , rep)
+    # rep  = (idx-1)              % n_rep                + 1
+    # ipct = ((idx-1) ÷ n_rep)    % length(pct_grid)     + 1
+    # ia   = ((idx-1) ÷ (n_rep*length(pct_grid)))        + 1
 
-    Q0_div  = Q0_param[idx]
-    pct     = pct_param[idx]
+    # alpha_true = alpha_list[ia]
+    # pct        = pct_grid[ipct]
+
+    alpha_true = alpha_param[idx]
+    pct    = pct_param[idx]
     rep    = rep_param[idx]
 
-    alpha_true = alpha        # constant defined in header
 
     rng = MersenneTwister(hash((base_seed, Threads.threadid(), idx)))
 
     # --- build web & true diets ------------------------------------------
     A, _       = nichemodelweb(S, C; rng = rng)
     A_bool     = (A .> 0)
-    Q_true     = quantitativeweb(A; alpha = alpha_true, rng = rng)
+    Q_true     = quantitativeweb(A; 
+                                alpha_dir = alpha_true, 
+                                method = :rand, 
+                                rng = rng)
     ftl_true   = trophic_levels(Q_true)
 
     ftl_obs = ftl_inference(ftl_true; ftl_prop = ftl_prop, ftl_error = ftl_error)
@@ -95,7 +100,7 @@ Q0_div_v = Vector{Float64}(undef, Nruns)
     mask       = select_known_links(Q_true, ftl_obs; pct = pct, skew = Symbol(skew_setting), rng = rng)
 
     # --- anneal ----------------------------------------------------------
-    Q0 = make_prior_Q0(Q_true; deviation = Q0_div, rng = rng);
+    Q0 = make_prior_Q0(Q_true; deviation = 1.0, rng = rng);
     Q_est, _   = estimate_Q_sa(A_bool, ftl_obs, Q0;
                                known_mask = mask,
                                Q_known    = Q_true,   # comment to let SA estimate them
@@ -111,8 +116,8 @@ Q0_div_v = Vector{Float64}(undef, Nruns)
     wrmse_Q  = stats.wrmse;
     meanKL_Q = stats.mean_KL;
 
-    Q0_div_v[idx]  = Q0_div
-    pct_v[idx]   = pct
+    alpha_v[idx]   = alpha_true;
+    pct_v[idx] = pct;
     rep_v[idx] = rep;
     r2_v[idx]  = r2_Q;
     mae_v[idx] = mae_Q;
@@ -122,35 +127,33 @@ Q0_div_v = Vector{Float64}(undef, Nruns)
     meanKL_v[idx] = meanKL_Q;
 end
 
-#save data file
-filename = smartpath("../data/prior_knownlinks_$(skew_setting).jld")
-@save filename S C wiggle_sa Q0_div_list pct_list n_rep steps_sa ftl_prop ftl_error base_seed skew_setting pct_v Q0_div_v rep_v r2_v mae_v wmae_v rmse_v wrmse_v meanKL_v
+# #save data file
+# filename = smartpath("../data/alphaknown_$(skew_setting).jld")
+# @save filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
 
 
 
-skew_setting = :randsp;
-filename = smartpath("../data/prior_knownlinks_$(skew_setting).jld")
-@load filename S C wiggle_sa Q0_div_list pct_list n_rep steps_sa ftl_prop ftl_error base_seed skew_setting pct_v Q0_div_v rep_v r2_v mae_v wmae_v rmse_v wrmse_v meanKL_v
-
-
+skew_setting = :percol;
+filename = smartpath("../data/alphaknown_$(skew_setting).jld")
+@load filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
 
 ###############################################################################
 # build DataFrame, dropping the NaN rows
 ###############################################################################
 
-df = DataFrame(pct    = pct_v,
-               Q0_div = Q0_div_v,
-               rep    = rep_v,
-               R2     = r2_v,
-               MAE    = mae_v,
-               WMAE   = wmae_v,
-               RMSE   = rmse_v,
-               WRMSE  = wrmse_v,
-               meanKL = meanKL_v)
+df     = DataFrame(alpha = alpha_v,
+                  pct   = pct_v,
+                  rep   = rep_v,
+                  R2    = r2_v,
+                  MAE   = mae_v,
+                  WMAE  = wmae_v,
+                  RMSE  = rmse_v,
+                  WRMSE = wrmse_v,
+                  meanKL = meanKL_v);
 
 
 df_summary = combine(
-  DataFrames.groupby(df, [:pct, :Q0_div]),
+  DataFrames.groupby(df, [:alpha, :pct]),
 
   # R²: drop any non-finite values
   :R2    => (x -> mean(filter(isfinite,    x))) => :mean_R2,
@@ -183,140 +186,125 @@ show(df_summary, allrows = true, allcols = true)
 ###############################################################################
 # plot three curves with UnicodePlots
 ###############################################################################
-nerrs = length(pct_list)                 # number of FTL‑error levels
-colmap = cgrad(:viridis, nerrs; categorical = true)   # distinct colours
-getcol(i) = colmap[i]                          # 1‑based colour fetch
 
 #R2
 p = nothing;
-for (i, p_val) in enumerate(pct_list)
-    sub = df_summary[df_summary.pct .== p_val, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if p === nothing
-        p = plot(sub.Q0_div, sub.mean_R2;
-                 xlabel = "Degree of prior deviation (Q0_div)",
+        p = plot(sub.pct, sub.mean_R2;
+                 xlabel = "Prop. links known",
                  ylabel = "mean R²",
-                 color  = getcol(i),
-                 label  = "pct = $p_val",
+                 label  = "α = $α",
                  size   = (500, 400),
                  frame = :box,
                  width = 2);
     else
-        plot!(p, sub.Q0_div, sub.mean_R2;
-              color  = getcol(i),
-              label = "pct = $p_val",
+        plot!(p, sub.pct, sub.mean_R2;
+              label = "α = $α",
               width = 2);
     end
 end
 
 #MAE
 pmae = nothing;
-for (i, p_val) in enumerate(pct_list)
-    sub = df_summary[df_summary.pct .== p_val, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if pmae === nothing
-        pmae = plot(sub.Q0_div, sub.mean_MAE;
-                 xlabel = "Degree of prior deviation (Q0_div)",
+        pmae = plot(sub.pct, sub.mean_MAE;
+                 xlabel = "Prop. links known",
                  ylabel = "mean MAE",
-                 color  = getcol(i),
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pmae, sub.Q0_div, sub.mean_MAE;
-            color  = getcol(i),  
-            label = false,
-            width = 2);
+        plot!(pmae, sub.pct, sub.mean_MAE;
+              label = false,
+              width = 2);
     end
 end
 
 #WMAE
 pwmae = nothing;
-for (i, p_val) in enumerate(pct_list)
-    sub = df_summary[df_summary.pct .== p_val, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if pwmae === nothing
-        pwmae = plot(sub.Q0_div, sub.mean_WMAE;
-                 xlabel = "Degree of prior deviation (Q0_div)",
-                 ylabel = "mean WMAE",
-                 color  = getcol(i),
+        pwmae = plot(sub.pct, sub.mean_WMAE;
+                 xlabel = "Prop. links known",
+                 ylabel = "mean MAE",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pwmae, sub.Q0_div, sub.mean_WMAE;
-            label = false,
-            color  = getcol(i),
-            width = 2);
+        plot!(pwmae, sub.pct, sub.mean_WMAE;
+              label = false,
+              width = 2);
     end
 end
 
 #RMSE
 prmse = nothing;
-for (i, p_val) in enumerate(pct_list)
-    sub = df_summary[df_summary.pct .== p_val, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if prmse === nothing
-        prmse = plot(sub.Q0_div, sub.mean_RMSE;
-                 xlabel = "Degree of prior deviation (Q0_div)",
+        prmse = plot(sub.pct, sub.mean_RMSE;
+                 xlabel = "Prop. links known",
                  ylabel = "mean RMSE",
-                 color  = getcol(i),
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(prmse, sub.Q0_div, sub.mean_RMSE;
-            label = false,
-            color  = getcol(i),
-            width = 2);
+        plot!(prmse, sub.pct, sub.mean_RMSE;
+              label = false,
+              width = 2);
     end
 end
 
 #WRMSE
 pwrmse = nothing;
-for (i, p_val) in enumerate(pct_list)
-    sub = df_summary[df_summary.pct .== p_val, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if pwrmse === nothing
-        pwrmse = plot(sub.Q0_div, sub.mean_WRMSE;
-                 xlabel = "Degree of prior deviation (Q0_div)",
-                 ylabel = "mean WRMSE",
-                 color  = getcol(i),
+        pwrmse = plot(sub.pct, sub.mean_WRMSE;
+                 xlabel = "Prop. links known",
+                 ylabel = "mean RMSE",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pwrmse, sub.Q0_div, sub.mean_WRMSE;
-            color  = getcol(i),
-            label = false,
-            width = 2);
+        plot!(pwrmse, sub.pct, sub.mean_WRMSE;
+              label = false,
+              width = 2);
     end
 end
 
 
 #MEAN KL
 pkl = nothing;
-for (i, p_val) in enumerate(pct_list)
-    sub = df_summary[df_summary.pct .== p_val, :]
+for α in alpha_list
+    sub = df_summary[df_summary.alpha .== α, :]
 
     if pkl === nothing
-        pkl = plot(sub.Q0_div, sub.mean_KL;
-                 xlabel = "Degree of prior deviation (Q0_div)",
+        pkl = plot(sub.pct, sub.mean_KL;
+                 xlabel = "Prop. links known",
                  ylabel = "mean KL",
-                 color  = getcol(i),
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pkl, sub.Q0_div, sub.mean_KL;
-            color  = getcol(i),
-            label = false,
-            width = 2);
+        plot!(pkl, sub.pct, sub.mean_KL;
+              label = false,
+              width = 2);
     end
 end
 
@@ -333,3 +321,4 @@ display(combplot)
 
 filename = smartpath("../figures/fig_alphaknown_$(skew_setting).pdf")
 Plots.savefig(combplot,filename)
+
