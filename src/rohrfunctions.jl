@@ -79,3 +79,52 @@ function rohr_fraction_correct(params::NTuple{3, <:Real},
     frac_correct = correct_exp / total_pairs
     return frac_correct, P̂
 end
+
+
+function rohr_param_estimate(foodweb::Symbol)
+
+    if foodweb == :Benguela
+        ##############################################################################
+        # 1)  Load Benguela data
+        ##############################################################################
+        A_path    = smartpath("../data/foodweb/bengula_A_matrix.csv")   # your helper
+        mass_path = smartpath("../data/foodweb/bengula_masses.csv")
+
+        A_df      = CSV.read(A_path,  DataFrame; header = true)
+        mass_df   = CSV.read(mass_path, DataFrame; header = true)
+
+        #Options to load different food web matrices/mass vectors
+
+    end
+
+
+    # First column of the csv is the species name → drop it
+    A = Matrix(A_df[:, 2:end])                # prey = rows, predators = columns
+    mass = Float64.(mass_df.mass_kg)          # adjust column name if different
+
+    @assert size(A, 1) == length(mass) "Mass vector length ≠ number of species"
+
+
+    ##############################################################################
+    # 2)  Estimate α, β, γ with Nelder–Mead
+    ##############################################################################
+    negloglik_vec(x) = rohr_negloglik( (x[1], x[2], x[3]), A, mass )
+
+    initial_x    = zeros(3)
+
+    opt_settings = Optim.Options(        # ← put solver options *here*
+                        iterations  = 10_000,
+                        store_trace = true,
+                        show_trace  = false)
+
+    result   = optimize(negloglik_vec,
+                        initial_x,
+                        NelderMead(),
+                        opt_settings)     # 4th positional arg
+
+    params_hat = Optim.minimizer(result)     # Vector{Float64}(3)
+    α̂, β̂, γ̂ = params_hat
+
+    return α̂, β̂, γ̂
+
+end

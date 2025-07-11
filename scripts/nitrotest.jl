@@ -13,6 +13,8 @@ using Distributions
 using DataFrames
 using LinearAlgebra 
 using JLD2 
+using CSV
+using Optim
 # using LightGraphs
 using Base.Threads
 using Plots
@@ -35,15 +37,46 @@ A_bool = A_bool[tlsp,tlsp];
 # Plot adjacency matrix
 p_a = Plots.heatmap(A);
 
+#Fit Allometric web
+α̂, β̂, γ̂ = rohr_param_estimate(:Benguela)
+rohr_params = (α̂, β̂, γ̂)
+
+#Plot link probability from (α̂, β̂, γ̂)
+σ(x) = 1 / (1 + exp(-x))
+p_ratio(r) = σ(α̂ + β̂ * log(r) + γ̂ * log(r)^2)
+ratios = 10 .^ range(-4, 2; length = 400)   # log-spaced
+probs = p_ratio.(ratios)
+plot(ratios, probs;
+     xscale = :log10,
+     xlabel = "Prey : Predator mass ratio (mᵢ / mⱼ)",
+     ylabel = "Link probability  pᵢⱼ",
+     width = 2,
+     frame = :box,
+     legend = false)
+
 # Create a random quantitative web
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # alpha >> 1 ~ diets forced to equal weights
-Q_true = quantitativeweb(A; alpha = 0.5, method = :rand);
+#RANDOM
+# Q_true = quantitativeweb(A; 
+#                         alpha_dir = 0.5, 
+#                         method = :rand);
+
+#ALLOMETRIC
+Q_true = quantitativeweb(A; 
+                        alpha_dir = 0.5, 
+                        method = :allometric, 
+                        nichevalues = niche, 
+                        rohr_params = rohr_params);
+
+
 p_q = Plots.heatmap(Q_true);
 
+
+
 # Plot Adjacency and Quantitative
-# plot(p_a, p_q; layout = (2, 1), size = (400, 600))
+plot(p_a, p_q; layout = (2, 1), size = (400, 600))
 
 # Look at histogram of weights
 # histogram(vec(Q_true[(Q_true .> 0) .& (Q_true .< 1)]))
@@ -126,7 +159,7 @@ p_m = Plots.heatmap(known_mask);
 # Q0 = quantitativeweb(A; alpha = 1.0)
 
 # Propose an initial Q0 - informative (divergence = 0) to uninformative (divergence = 1)
-Q0 = make_prior_Q0(Q_true; deviation = 0.0);
+Q0 = make_prior_Q0(Q_true; deviation = 1.0);
 p_q0 = Plots.heatmap(Q0);
 # plot(p_q, p_q0; layout = (2, 1), size = (400, 600))
 # scatter(vec(Q_true),vec(Q0))

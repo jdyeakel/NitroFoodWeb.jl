@@ -12,6 +12,8 @@ using Distributions
 using DataFrames
 using LinearAlgebra 
 using JLD2 
+using CSV
+using Optim
 # using LightGraphs
 using Base.Threads
 
@@ -42,6 +44,7 @@ smartpath,
 ftl_inference,
 make_prior_Q0,
 rohr_negloglik,
-rohr_fraction_correct
+rohr_fraction_correct,
+rohr_param_estimate
 
 end # module NitroFoodWeb

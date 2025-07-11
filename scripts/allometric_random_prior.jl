@@ -13,24 +13,25 @@ using Distributions
 using DataFrames
 using LinearAlgebra 
 using JLD2 
-using Optim
 # using LightGraphs
 using Base.Threads
 using Plots
 
+using Optim
+using CSV
 using ProgressMeter
-using Statistics
-using UnicodePlots
 
-# PARALLEL VERSION - INCLUDING ALPHA_TRUE LOOP
 
+###############################################################################
 ###############################################################################
 # experiment constants
 ###############################################################################
 S, C          = 100, 0.02;
-alpha_list    = [0.5, 1.0, 10.0];          # <—— three diet breadths to test
-pct_grid      = 0.0:0.05:0.50;             # fraction of links locked
-n_rep         = 500;
+# alpha = 0 runs the allometric Q
+alpha_list    = [0.0, 0.5, 1.0, 10.0];       
+deviation_grid = 0.0:0.1:1.0;         # prior deviation (0 = fully informed)
+pct_const      = 0.0;                       # keep links‐known fraction fixed
+n_rep         = 50;
 
 ftl_prop      = 1.0;                       # Assume perfect knowledge of ftls
 ftl_error     = 0.0;
@@ -40,20 +41,23 @@ wiggle_sa     = 0.05;
 # ΔTN           = 3.5;
 base_seed     = 20250624;
 
-skew_setting  = "percol";
+skew_setting  = "rand";
 
-alpha_param = repeat(alpha_list, inner = length(pct_grid)*n_rep)
-pct_param   = repeat(repeat(pct_grid, inner = n_rep), outer = length(alpha_list))
-rep_param   = repeat(collect(1:n_rep),  outer = length(alpha_list)*length(pct_grid))
+α̂, β̂, γ̂       = rohr_param_estimate(:Benguela);
+rohr_params   = (α̂, β̂, γ̂);
 
-@assert length(alpha_param) == length(pct_param) == length(rep_param)
+alpha_param = repeat(alpha_list, inner = length(deviation_grid)*n_rep)
+dev_param   = repeat(repeat(deviation_grid, inner = n_rep), outer = length(alpha_list))
+rep_param   = repeat(collect(1:n_rep),  outer = length(alpha_list)*length(deviation_grid))
+
+@assert length(alpha_param) == length(dev_param) == length(rep_param)
 Nruns = length(alpha_param)
 
 
 ###############################################################################
 # pre-allocate result arrays (thread-safe, no push!)
 ###############################################################################
-pct_v   = Vector{Float64}(undef, Nruns);
+dev_v   = Vector{Float64}(undef, Nruns);
 rep_v   = Vector{Int}(undef, Nruns);
 alpha_v = Vector{Float64}(undef, Nruns);
 r2_v    = Vector{Float64}(undef, Nruns);
@@ -76,28 +80,44 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     # pct        = pct_grid[ipct]
 
     alpha_true = alpha_param[idx]
-    pct    = pct_param[idx]
+    deviation = dev_param[idx]
+    pct    = pct_const
     rep    = rep_param[idx]
 
 
     rng = MersenneTwister(hash((base_seed, Threads.threadid(), idx)))
 
     # --- build web & true diets ------------------------------------------
-    A, _       = nichemodelweb(S, C; rng = rng)
+    A, nichevalues       = nichemodelweb(S, C; rng = rng)
     A_bool     = (A .> 0)
-    Q_true     = quantitativeweb(A; alpha = alpha_true, rng = rng)
+    
+    if alpha_true > 0.0
+        
+        Q_true     = quantitativeweb(A; 
+                                    alpha_dir = alpha_true, 
+                                    method = :rand, 
+                                    rng = rng)
+    else 
+        
+        Q_true     = quantitativeweb(A; 
+                                    alpha_dir = alpha_true, 
+                                    method = :allometric, 
+                                    rohr_params = rohr_params,
+                                    nichevalues = nichevalues,
+                                    rng = rng)
+
+    end
+
     ftl_true   = trophic_levels(Q_true)
 
     ftl_obs = ftl_inference(ftl_true; ftl_prop = ftl_prop, ftl_error = ftl_error)
-    
-    # d15N_true  = (ftl_true .- 1) .* ΔTN
-    # ftl_obs    = 1 .+ d15N_true ./ ΔTN
 
     # --- lock links ------------------------------------------------------
     mask       = select_known_links(Q_true, ftl_obs; pct = pct, skew = Symbol(skew_setting), rng = rng)
 
     # --- anneal ----------------------------------------------------------
-    Q0 = quantitativeweb(A; alpha = 1.0, rng = rng)
+    Q0 = make_prior_Q0(Q_true; deviation = deviation);
+
     Q_est, _   = estimate_Q_sa(A_bool, ftl_obs, Q0;
                                known_mask = mask,
                                Q_known    = Q_true,   # comment to let SA estimate them
@@ -114,7 +134,7 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     meanKL_Q = stats.mean_KL;
 
     alpha_v[idx]   = alpha_true;
-    pct_v[idx] = pct;
+    dev_v[idx] = deviation;
     rep_v[idx] = rep;
     r2_v[idx]  = r2_Q;
     mae_v[idx] = mae_Q;
@@ -124,22 +144,22 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     meanKL_v[idx] = meanKL_Q;
 end
 
-# #save data file
-# filename = smartpath("../data/alphaknown_$(skew_setting).jld")
-# @save filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
+#save data file
+filename = smartpath("../data/allometricrandom_prior_$(skew_setting).jld")
+@save filename S C alpha_list deviation_grid n_rep steps_sa wiggle_sa ftl_prop ftl_error base_seed skew_setting alpha_v dev_v rep_v r2_v mae_v rmse_v meanKL_v
+
+skew_setting = :rand;
+filename = smartpath("../data/allometricrandom_prior_$(skew_setting).jld")
+@load filename S C alpha_list deviation_grid n_rep steps_sa wiggle_sa ftl_prop ftl_error base_seed skew_setting alpha_v dev_v rep_v r2_v mae_v rmse_v meanKL_v
 
 
-
-skew_setting = :percol;
-filename = smartpath("../data/alphaknown_$(skew_setting).jld")
-@load filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
 
 ###############################################################################
 # build DataFrame, dropping the NaN rows
 ###############################################################################
 
 df     = DataFrame(alpha = alpha_v,
-                  pct   = pct_v,
+                  deviation   = dev_v,
                   rep   = rep_v,
                   R2    = r2_v,
                   MAE   = mae_v,
@@ -150,7 +170,7 @@ df     = DataFrame(alpha = alpha_v,
 
 
 df_summary = combine(
-  DataFrames.groupby(df, [:alpha, :pct]),
+  DataFrames.groupby(df, [:alpha, :deviation]),
 
   # R²: drop any non-finite values
   :R2    => (x -> mean(filter(isfinite,    x))) => :mean_R2,
@@ -190,15 +210,15 @@ for α in alpha_list
     sub = df_summary[df_summary.alpha .== α, :]
 
     if p === nothing
-        p = plot(sub.pct, sub.mean_R2;
-                 xlabel = "Prop. links known",
+        p = plot(sub.deviation, sub.mean_R2;
+                 xlabel = "Prior deviation",
                  ylabel = "mean R²",
                  label  = "α = $α",
                  size   = (500, 400),
                  frame = :box,
                  width = 2);
     else
-        plot!(p, sub.pct, sub.mean_R2;
+        plot!(p, sub.deviation, sub.mean_R2;
               label = "α = $α",
               width = 2);
     end
@@ -210,15 +230,15 @@ for α in alpha_list
     sub = df_summary[df_summary.alpha .== α, :]
 
     if pmae === nothing
-        pmae = plot(sub.pct, sub.mean_MAE;
-                 xlabel = "Prop. links known",
+        pmae = plot(sub.deviation, sub.mean_MAE;
+                 xlabel = "Prior deviation",
                  ylabel = "mean MAE",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pmae, sub.pct, sub.mean_MAE;
+        plot!(pmae, sub.deviation, sub.mean_MAE;
               label = false,
               width = 2);
     end
@@ -230,15 +250,15 @@ for α in alpha_list
     sub = df_summary[df_summary.alpha .== α, :]
 
     if pwmae === nothing
-        pwmae = plot(sub.pct, sub.mean_WMAE;
-                 xlabel = "Prop. links known",
-                 ylabel = "mean MAE",
+        pwmae = plot(sub.deviation, sub.mean_WMAE;
+                 xlabel = "Prior deviation",
+                 ylabel = "mean WMAE",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pwmae, sub.pct, sub.mean_WMAE;
+        plot!(pwmae, sub.deviation, sub.mean_WMAE;
               label = false,
               width = 2);
     end
@@ -250,15 +270,15 @@ for α in alpha_list
     sub = df_summary[df_summary.alpha .== α, :]
 
     if prmse === nothing
-        prmse = plot(sub.pct, sub.mean_RMSE;
-                 xlabel = "Prop. links known",
+        prmse = plot(sub.deviation, sub.mean_RMSE;
+                 xlabel = "Prior deviation",
                  ylabel = "mean RMSE",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(prmse, sub.pct, sub.mean_RMSE;
+        plot!(prmse, sub.deviation, sub.mean_RMSE;
               label = false,
               width = 2);
     end
@@ -270,15 +290,15 @@ for α in alpha_list
     sub = df_summary[df_summary.alpha .== α, :]
 
     if pwrmse === nothing
-        pwrmse = plot(sub.pct, sub.mean_WRMSE;
-                 xlabel = "Prop. links known",
-                 ylabel = "mean RMSE",
+        pwrmse = plot(sub.deviation, sub.mean_WRMSE;
+                 xlabel = "Prior deviation",
+                 ylabel = "mean WRMSE",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pwrmse, sub.pct, sub.mean_WRMSE;
+        plot!(pwrmse, sub.deviation, sub.mean_WRMSE;
               label = false,
               width = 2);
     end
@@ -291,15 +311,15 @@ for α in alpha_list
     sub = df_summary[df_summary.alpha .== α, :]
 
     if pkl === nothing
-        pkl = plot(sub.pct, sub.mean_KL;
-                 xlabel = "Prop. links known",
+        pkl = plot(sub.deviation, sub.mean_KL;
+                 xlabel = "Prior deviation",
                  ylabel = "mean KL",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
                  width = 2);
     else
-        plot!(pkl, sub.pct, sub.mean_KL;
+        plot!(pkl, sub.deviation, sub.mean_KL;
               label = false,
               width = 2);
     end
@@ -316,6 +336,5 @@ combplot = plot(
 display(combplot)
 
 
-filename = smartpath("../figures/fig_alphaknown_$(skew_setting).pdf")
+filename = smartpath("../figures/fig_allometricrandom_prior_$(skew_setting).pdf")
 Plots.savefig(combplot,filename)
-

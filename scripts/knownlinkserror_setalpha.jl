@@ -13,6 +13,7 @@ using Distributions
 using DataFrames
 using LinearAlgebra 
 using JLD2 
+using Optim
 # using LightGraphs
 using Base.Threads
 using Plots

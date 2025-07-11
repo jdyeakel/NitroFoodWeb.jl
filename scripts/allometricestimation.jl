@@ -29,7 +29,7 @@ mass_path = smartpath("../data/foodweb/bengula_masses.csv")
 A_df      = CSV.read(A_path,  DataFrame; header = true)
 mass_df   = CSV.read(mass_path, DataFrame; header = true)
 
-# First column of the csv is usually the species name → drop it
+# First column of the csv is the species name → drop it
 A = Matrix(A_df[:, 2:end])                # prey = rows, predators = columns
 mass = Float64.(mass_df.mass_kg)          # adjust column name if different
 

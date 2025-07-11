@@ -19,7 +19,7 @@ function make_prior_Q0(Q_true;
     @assert 0 ≤ deviation ≤ 1 "deviation must be in [0,1]"
 
     A       = Q_true .> 0                       # topology mask
-    Q_unif  = quantitativeweb(A; alpha = 1.0, rng = rng)
+    Q_unif  = quantitativeweb(A; alpha_dir = 1.0, method = :rand, rng = rng)
 
     # Weighted average between TRUE and UNINFORMATIVE
     Q0 = (1 - deviation) .* Q_true .+ deviation .* Q_unif
