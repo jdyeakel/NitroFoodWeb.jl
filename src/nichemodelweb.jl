@@ -1,73 +1,53 @@
-function nichemodelweb(S,C; rng = Random.GLOBAL_RNG) 
-    
-    
-    #list of random niche values
-    n = sort(rand(rng, S));
-    
-    #Define beta distribution
-    a = 1;
-    b = (1/(2*C)) - 1;
-    bdist = Beta(a,b);
-    
-    #range
-    r = n .* rand(rng, bdist, S);
-    
-    #center of range
-    c = rand.(rng, Uniform.(r/2, n));
-    
-    #Find species that fall within the range of each other
-    prey = Array{Array{Int64}}(undef,S);
-    [prey[i] = findall(x-> (x > c[i] - (r[i]/2) && x < c[i] + (r[i]/2)), n) for i=1:S];
-    
+using Random
+using Distributions
 
-    adjmatrix = zeros(Bool,S,S);
-		for i=1:S
-    	adjmatrix[prey[i],i] .= true;
-		end
-			
-    # # Remove disconnected species
-    # # Everything has to be eaten OR be eaten by something
-    # ladj = size(adjmatrix)[1];
-    # keep = findall(!iszero,vec(sum(adjmatrix,dims=2))+vec(sum(adjmatrix,dims=1)));
-    # niche = n;
-    
-    
-    # while length(keep) < ladj
-    #     ladj = size(adjmatrix)[1];
-    #     keep = findall(!iszero,vec(sum(adjmatrix,dims=2))+vec(sum(adjmatrix,dims=1)));
-    #     adjmatrix = adjmatrix[keep,keep];
-    #     niche = niche[keep];
-    # end
+function nichemodelweb(S, C; rng = Random.GLOBAL_RNG)
+    numsp = 0
+    niche = Float64[]
+    adjmatrix = Array{Float64}(undef,0,0)
 
-    # Initialize niche now that we have n
-    niche = n
+    while numsp != S
+        # 1. draw niche values
+        n = sort(rand(rng, S))
 
-    #Remove self links - do this first before trimming
-    adjmatrix[diagind(adjmatrix)] .= 0;
+        # 2. feeding‐range distribution
+        a, b = 1, (1/(2*C)) - 1
+        bdist = Beta(a, b)
+        r = n .* rand(rng, bdist, S)
 
-    while true
-      # Calculate degrees: sum over rows gives out-degree; sum over columns gives in-degree
-      deg = vec(sum(adjmatrix, dims=2)) + vec(sum(adjmatrix, dims=1))
-      
-      # Keep only species that have at least one link
-      keep = findall(!iszero, deg)
-      
-      # If no species are trimmed, we are done
-      if length(keep) == size(adjmatrix, 1)
-          break
-      end
-  
-      # Otherwise, trim and repeat
-      adjmatrix = adjmatrix[keep, keep]
-      niche = niche[keep]
+        # 3. feeding centers
+        c = rand.(Ref(rng), Uniform.(r ./ 2, n))
+
+        # 4. (re)initialize the Bool adjacency
+        adj = falses(S, S)
+
+        # 5. fill in the feeding links
+        for i in 1:S
+            idx = findall(x -> abs(x - c[i]) < r[i]/2, n)
+            adj[idx, i] .= true
+        end
+
+        # 6. remove self‑links
+        for i in 1:S
+            adj[i,i] = false
+        end
+
+        # 7. iteratively trim any species with degree zero
+        while true
+            deg = sum(adj, dims=2) .+ sum(adj, dims=1)'   # out‑ + in‑degree
+            keep = vec(deg) .> 0
+            if all(keep)
+                break
+            end
+            adj = adj[keep, keep]
+            n   = n[keep]
+        end
+
+        # 8. update for next iteration
+        adjmatrix = Float64.(adj)
+        niche     = n
+        numsp     = length(n)
     end
-    
-    adjmatrix = Array{Float64}(adjmatrix)
-    
-    return adjmatrix, niche
-    
-end
 
-# R"""
-# image($(adjmatrix),col=grey(c(0,1)))
-# """
+    return adjmatrix, niche
+end

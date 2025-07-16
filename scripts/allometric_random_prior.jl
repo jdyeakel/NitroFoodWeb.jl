@@ -145,11 +145,11 @@ meanKL_v = Vector{Float64}(undef, Nruns);
 end
 
 #save data file
-filename = smartpath("../data/allometricrandom_prior_$(skew_setting).jld")
+filename = smartpath("../data/allometricrandom_prior.jld")
 @save filename S C alpha_list deviation_grid n_rep steps_sa wiggle_sa ftl_prop ftl_error base_seed skew_setting alpha_v dev_v rep_v r2_v mae_v rmse_v meanKL_v
 
 skew_setting = :rand;
-filename = smartpath("../data/allometricrandom_prior_$(skew_setting).jld")
+filename = smartpath("../data/allometricrandom_prior.jld")
 @load filename S C alpha_list deviation_grid n_rep steps_sa wiggle_sa ftl_prop ftl_error base_seed skew_setting alpha_v dev_v rep_v r2_v mae_v rmse_v meanKL_v
 
 
@@ -336,5 +336,5 @@ combplot = plot(
 display(combplot)
 
 
-filename = smartpath("../figures/fig_allometricrandom_prior_$(skew_setting).pdf")
+filename = smartpath("../figures/fig_allometricrandom_prior.pdf")
 Plots.savefig(combplot,filename)

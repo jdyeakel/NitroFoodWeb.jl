@@ -42,7 +42,7 @@ function estimate_Q_sa(
     # 0. initial quantitative guess                                      #
     # ------------------------------------------------------------------ #
     # Q = quantitativeweb(A; alpha = alpha0, rng = rng)
-    Q = Q0
+    Q = copy(Q0)
 
     if Q_known !== nothing
         Q[known_mask] .= Q_known[known_mask]

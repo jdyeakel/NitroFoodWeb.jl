@@ -19,7 +19,7 @@ using Optim
 using Base.Threads
 using Plots
 
-S = 100;
+S = 25;
 C = 0.02;
 
 # Build adjacency matrix
@@ -37,38 +37,41 @@ A_bool = A_bool[tlsp,tlsp];
 # Plot adjacency matrix
 p_a = Plots.heatmap(A);
 
-#Fit Allometric web
-α̂, β̂, γ̂ = rohr_param_estimate(:Benguela)
-rohr_params = (α̂, β̂, γ̂)
 
-#Plot link probability from (α̂, β̂, γ̂)
-σ(x) = 1 / (1 + exp(-x))
-p_ratio(r) = σ(α̂ + β̂ * log(r) + γ̂ * log(r)^2)
-ratios = 10 .^ range(-4, 2; length = 400)   # log-spaced
-probs = p_ratio.(ratios)
-plot(ratios, probs;
-     xscale = :log10,
-     xlabel = "Prey : Predator mass ratio (mᵢ / mⱼ)",
-     ylabel = "Link probability  pᵢⱼ",
-     width = 2,
-     frame = :box,
-     legend = false)
+# #ALLOMETRIC
+# #Fit Allometric web
+# α̂, β̂, γ̂ = rohr_param_estimate(:Benguela)
+# rohr_params = (α̂, β̂, γ̂)
+# #Plot link probability from (α̂, β̂, γ̂)
+# σ(x) = 1 / (1 + exp(-x))
+# p_ratio(r) = σ(α̂ + β̂ * log(r) + γ̂ * log(r)^2)
+# ratios = 10 .^ range(-4, 2; length = 400)   # log-spaced
+# probs = p_ratio.(ratios)
+# plot(ratios, probs;
+#      xscale = :log10,
+#      xlabel = "Prey : Predator mass ratio (mᵢ / mⱼ)",
+#      ylabel = "Link probability  pᵢⱼ",
+#      width = 2,
+#      frame = :box,
+#      legend = false)
+# 
+# Q_true = quantitativeweb(A; 
+#                         alpha_dir = 0.5, 
+#                         method = :allometric, 
+#                         nichevalues = niche, 
+#                         rohr_params = rohr_params);
+
 
 # Create a random quantitative web
 # 0 < alpha << 1 ~ increasingly long tailed; specialists common
 # alpha = 1 ~ uninformative, so diets uniformly distributed
 # alpha >> 1 ~ diets forced to equal weights
 #RANDOM
-# Q_true = quantitativeweb(A; 
-#                         alpha_dir = 0.5, 
-#                         method = :rand);
-
-#ALLOMETRIC
 Q_true = quantitativeweb(A; 
                         alpha_dir = 0.5, 
-                        method = :allometric, 
-                        nichevalues = niche, 
-                        rohr_params = rohr_params);
+                        method = :rand);
+
+
 
 
 p_q = Plots.heatmap(Q_true);
@@ -248,3 +251,32 @@ show(df_stats, allrows = true, allcols = true)
 println("\nConsumers with large KL (potentially mis-fit): ",
         stats.bad)
 
+stats_Q0 = evaluate_Q(Q_true, Q0;
+           known_mask = known_mask,   # Bool matrix same size as Q
+           eps        = 1e-12);
+
+values_Q0 = [
+    stats_Q0.mae,
+    stats_Q0.wmae,
+    stats_Q0.rmse,
+    stats_Q0.wrmse,
+    stats_Q0.r,
+    stats_Q0.mean_KL
+]
+
+# Combine Q_est and Q0 values into a single DataFrame
+df_stats_combined = DataFrame(
+    Metric = [
+        "Mean abs error",
+        "Weighted mean abs error",
+        "Root-mean-sq error",
+        "Weighted root-mean-sq error",
+        "Pearson R (weights)",
+        "Mean KL divergence"
+    ],
+    Q0_Value   = round.(values_Q0; digits = 4),
+    Qest_Value = round.(values; digits = 4),
+    𝚫Value = round.(values_Q0 .- values; digits = 4)
+)
+
+show(df_stats_combined, allrows = true, allcols = true)

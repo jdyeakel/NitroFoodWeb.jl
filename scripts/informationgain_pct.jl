@@ -13,24 +13,24 @@ using Distributions
 using DataFrames
 using LinearAlgebra 
 using JLD2 
+using Optim
 # using LightGraphs
 using Base.Threads
 using Plots
 
-using Optim
-using CSV
 using ProgressMeter
+using Statistics
+using UnicodePlots
 
+# PARALLEL VERSION - INCLUDING ALPHA_TRUE LOOP
 
-###############################################################################
 ###############################################################################
 # experiment constants
 ###############################################################################
-S, C          = 100, 0.02;
-# alpha = 0 runs the allometric Q
-alpha_list    = [0.0, 0.5, 1.0, 10.0];       
+S, C          = 25, 0.04;
+alpha_list    = [0.5, 1.0, 10.0];          # <—— three diet breadths to test
 pct_grid      = 0.0:0.05:0.50;             # fraction of links locked
-n_rep         = 100;
+n_rep         = 50;
 
 ftl_prop      = 1.0;                       # Assume perfect knowledge of ftls
 ftl_error     = 0.0;
@@ -40,10 +40,7 @@ wiggle_sa     = 0.05;
 # ΔTN           = 3.5;
 base_seed     = 20250624;
 
-skew_setting  = "high";
-
-α̂, β̂, γ̂       = rohr_param_estimate(:Benguela);
-rohr_params   = (α̂, β̂, γ̂);
+skew_setting  = "rand";
 
 alpha_param = repeat(alpha_list, inner = length(pct_grid)*n_rep)
 pct_param   = repeat(repeat(pct_grid, inner = n_rep), outer = length(alpha_list))
@@ -66,6 +63,13 @@ rmse_v   = Vector{Float64}(undef, Nruns);
 wrmse_v   = Vector{Float64}(undef, Nruns);
 meanKL_v = Vector{Float64}(undef, Nruns);
 
+r2Q0_v = Vector{Float64}(undef, Nruns);
+maeQ0_v = Vector{Float64}(undef, Nruns);
+wmaeQ0_v = Vector{Float64}(undef, Nruns);
+rmseQ0_v = Vector{Float64}(undef, Nruns);
+wrmseQ0_v = Vector{Float64}(undef, Nruns);
+meanKLQ0_v = Vector{Float64}(undef, Nruns);
+
 ###############################################################################
 # threaded sweep
 ###############################################################################
@@ -86,36 +90,24 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     rng = MersenneTwister(hash((base_seed, Threads.threadid(), idx)))
 
     # --- build web & true diets ------------------------------------------
-    A, nichevalues       = nichemodelweb(S, C; rng = rng)
+    A, _       = nichemodelweb(S, C; rng = rng)
     A_bool     = (A .> 0)
-    
-    if alpha_true > 0.0
-        
-        Q_true     = quantitativeweb(A; 
-                                    alpha_dir = alpha_true, 
-                                    method = :rand, 
-                                    rng = rng)
-    else 
-        
-        Q_true     = quantitativeweb(A; 
-                                    alpha_dir = alpha_true, 
-                                    method = :allometric, 
-                                    rohr_params = rohr_params,
-                                    nichevalues = nichevalues,
-                                    rng = rng)
-
-    end
-
+    Q_true     = quantitativeweb(A; 
+                                alpha_dir = alpha_true, 
+                                method = :rand, 
+                                rng = rng)
     ftl_true   = trophic_levels(Q_true)
 
     ftl_obs = ftl_inference(ftl_true; ftl_prop = ftl_prop, ftl_error = ftl_error)
+    
+    # d15N_true  = (ftl_true .- 1) .* ΔTN
+    # ftl_obs    = 1 .+ d15N_true ./ ΔTN
 
     # --- lock links ------------------------------------------------------
     mask       = select_known_links(Q_true, ftl_obs; pct = pct, skew = Symbol(skew_setting), rng = rng)
 
     # --- anneal ----------------------------------------------------------
-    Q0 = make_prior_Q0(Q_true; deviation = 1.0);
-
+    Q0 = make_prior_Q0(Q_true; deviation = 1.0, rng = rng);
     Q_est, _   = estimate_Q_sa(A_bool, ftl_obs, Q0;
                                known_mask = mask,
                                Q_known    = Q_true,   # comment to let SA estimate them
@@ -131,6 +123,14 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     wrmse_Q  = stats.wrmse;
     meanKL_Q = stats.mean_KL;
 
+    statsQ0 = evaluate_Q(Q_true, Q0; known_mask = mask, eps = 1e-12)
+    r2_Q0    = statsQ0.r;
+    mae_Q0   = statsQ0.mae;
+    wmae_Q0   = statsQ0.wmae;
+    rmse_Q0  = statsQ0.rmse;
+    wrmse_Q0  = statsQ0.wrmse;
+    meanKL_Q0 = statsQ0.mean_KL;
+
     alpha_v[idx]   = alpha_true;
     pct_v[idx] = pct;
     rep_v[idx] = rep;
@@ -140,17 +140,25 @@ meanKL_v = Vector{Float64}(undef, Nruns);
     rmse_v[idx] = rmse_Q;
     wrmse_v[idx] = wrmse_Q;
     meanKL_v[idx] = meanKL_Q;
+
+    r2Q0_v[idx]  = r2_Q0;
+    maeQ0_v[idx] = mae_Q0;
+    wmaeQ0_v[idx] = wmae_Q0;
+    rmseQ0_v[idx] = rmse_Q0;
+    wrmseQ0_v[idx] = wrmse_Q0;
+    meanKLQ0_v[idx] = meanKL_Q0;
+
 end
 
-#save data file
-filename = smartpath("../data/allometricrandom_pct_$(skew_setting).jld")
-@save filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ftl_prop ftl_error base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
-
-skew_setting = :rand;
-filename = smartpath("../data/allometricrandom_pct_$(skew_setting).jld")
-@load filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ftl_prop ftl_error base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
+# #save data file
+# filename = smartpath("../data/alphaknown_$(skew_setting).jld")
+# @save filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
 
 
+
+skew_setting = :percol;
+filename = smartpath("../data/alphaknown_$(skew_setting).jld")
+@load filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
 
 ###############################################################################
 # build DataFrame, dropping the NaN rows
@@ -211,11 +219,10 @@ for α in alpha_list
         p = plot(sub.pct, sub.mean_R2;
                  xlabel = "Prop. links known",
                  ylabel = "mean R²",
-                 label  = "Allometric",
+                 label  = "α = $α",
                  size   = (500, 400),
                  frame = :box,
-                 width = 2,
-                 linestyle = :dash);
+                 width = 2);
     else
         plot!(p, sub.pct, sub.mean_R2;
               label = "α = $α",
@@ -235,8 +242,7 @@ for α in alpha_list
                  size   = (500, 400),
                  frame = :box,
                  label = false,
-                 width = 2,
-                 linestyle = :dash);
+                 width = 2);
     else
         plot!(pmae, sub.pct, sub.mean_MAE;
               label = false,
@@ -252,12 +258,11 @@ for α in alpha_list
     if pwmae === nothing
         pwmae = plot(sub.pct, sub.mean_WMAE;
                  xlabel = "Prop. links known",
-                 ylabel = "mean WMAE",
+                 ylabel = "mean MAE",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
-                 width = 2,
-                 linestyle = :dash);
+                 width = 2);
     else
         plot!(pwmae, sub.pct, sub.mean_WMAE;
               label = false,
@@ -277,8 +282,7 @@ for α in alpha_list
                  size   = (500, 400),
                  frame = :box,
                  label = false,
-                 width = 2,
-                 linestyle = :dash);
+                 width = 2);
     else
         plot!(prmse, sub.pct, sub.mean_RMSE;
               label = false,
@@ -294,12 +298,11 @@ for α in alpha_list
     if pwrmse === nothing
         pwrmse = plot(sub.pct, sub.mean_WRMSE;
                  xlabel = "Prop. links known",
-                 ylabel = "mean WRMSE",
+                 ylabel = "mean RMSE",
                  size   = (500, 400),
                  frame = :box,
                  label = false,
-                 width = 2,
-                 linestyle = :dash);
+                 width = 2);
     else
         plot!(pwrmse, sub.pct, sub.mean_WRMSE;
               label = false,
@@ -320,8 +323,7 @@ for α in alpha_list
                  size   = (500, 400),
                  frame = :box,
                  label = false,
-                 width = 2,
-                 linestyle = :dash);
+                 width = 2);
     else
         plot!(pkl, sub.pct, sub.mean_KL;
               label = false,
@@ -339,5 +341,7 @@ combplot = plot(
 
 display(combplot)
 
-filename = smartpath("../figures/fig_allometricrandom_pct_$(skew_setting).pdf")
+
+filename = smartpath("../figures/fig_alphaknown_$(skew_setting).pdf")
 Plots.savefig(combplot,filename)
+
