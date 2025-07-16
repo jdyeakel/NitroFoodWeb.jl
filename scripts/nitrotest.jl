@@ -19,8 +19,8 @@ using Optim
 using Base.Threads
 using Plots
 
-S = 25;
-C = 0.02;
+S = 100;
+C = 0.01;
 
 # Build adjacency matrix
 A, niche = nichemodelweb(S,C)
@@ -162,6 +162,7 @@ p_m = Plots.heatmap(known_mask);
 # Q0 = quantitativeweb(A; alpha = 1.0)
 
 # Propose an initial Q0 - informative (divergence = 0) to uninformative (divergence = 1)
+
 Q0 = make_prior_Q0(Q_true; deviation = 1.0);
 p_q0 = Plots.heatmap(Q0);
 # plot(p_q, p_q0; layout = (2, 1), size = (400, 600))
@@ -251,7 +252,8 @@ show(df_stats, allrows = true, allcols = true)
 println("\nConsumers with large KL (potentially mis-fit): ",
         stats.bad)
 
-stats_Q0 = evaluate_Q(Q_true, Q0;
+Q0_uninformed = make_prior_Q0(Q_true; deviation = 1.0);
+stats_Q0 = evaluate_Q(Q_true, Q0_uninformed;
            known_mask = known_mask,   # Bool matrix same size as Q
            eps        = 1e-12);
 
@@ -276,7 +278,7 @@ df_stats_combined = DataFrame(
     ],
     Q0_Value   = round.(values_Q0; digits = 4),
     Qest_Value = round.(values; digits = 4),
-    𝚫Value = round.(values_Q0 .- values; digits = 4)
+    compscore = round.(values ./ values_Q0; digits = 4)
 )
 
 show(df_stats_combined, allrows = true, allcols = true)
