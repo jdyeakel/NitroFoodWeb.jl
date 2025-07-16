@@ -37,6 +37,9 @@ n_rep  = 50                        # replicates per (S,C) pair
 ftl_prop      = 1.0;               # Assume perfect knowledge of ftls
 ftl_error     = 0.0;
 
+base_seed     = 20250624;
+steps_sa      = 20_000;
+wiggle_sa     = 0.05;
 
 S_param   = repeat(S_list, inner = length(C_list)*n_rep)
 C_param   = repeat(repeat(C_list, inner = n_rep), outer = length(S_list))
@@ -68,6 +71,8 @@ meanKLQ0_v = Vector{Float64}(undef, Nruns);
 
 S_v = Vector{Int}(undef, Nruns)
 C_v = Vector{Float64}(undef, Nruns)
+
+skew_setting = "rand";
 
 ###############################################################################
 # threaded sweep
@@ -141,8 +146,8 @@ C_v = Vector{Float64}(undef, Nruns)
 end
 
 # #save data file
-filename = smartpath("../data/SCknown_$(skew_setting).jld")
-@save filename S_list C_list n_rep steps_sa wiggle_sa base_seed skew_setting S_v C_v rep_v r2_v mae_v wmae_v rmse_v wrmse_v meanKL_v
+filename = smartpath("../data/infogain_SC.jld")
+@save filename S_list C_list n_rep steps_sa wiggle_sa base_seed skew_setting S_v C_v rep_v r2_v mae_v wmae_v rmse_v wrmse_v meanKL_v r2Q0_v maeQ0_v wmaeQ0_v rmseQ0_v wrmseQ0_v meanKLQ0_v 
 
 
 # skew_setting = :percol;
