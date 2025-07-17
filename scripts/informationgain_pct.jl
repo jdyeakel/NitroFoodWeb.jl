@@ -28,8 +28,8 @@ using UnicodePlots
 # ------------------------------------------------------------------ #
 # experiment constants
 # ------------------------------------------------------------------ #
-S_list  = collect(25:5:100)        # species richness values
-C_list  = collect(0.02:0.02:0.2)   # connectance values
+S_list  = collect(10:2:80)        # species richness values
+C_list  = collect(0.015:0.005:0.1)   # connectance values
 alpha_true = 0.5                   # diet breadth (fixed)
 pct    = 0.0                       # fraction of links locked (fixed)
 n_rep  = 50                        # replicates per (S,C) pair
@@ -150,9 +150,8 @@ filename = smartpath("../data/infogain_SC.jld")
 @save filename S_list C_list n_rep steps_sa wiggle_sa base_seed skew_setting S_v C_v rep_v r2_v mae_v wmae_v rmse_v wrmse_v meanKL_v r2Q0_v maeQ0_v wmaeQ0_v rmseQ0_v wrmseQ0_v meanKLQ0_v 
 
 
-# skew_setting = :percol;
-# filename = smartpath("../data/alphaknown_$(skew_setting).jld")
-# @load filename S C alpha_list pct_grid n_rep steps_sa wiggle_sa ΔTN base_seed skew_setting alpha_v pct_v rep_v r2_v mae_v rmse_v meanKL_v
+filename = smartpath("../data/infogain_SC.jld")
+@load filename S_list C_list n_rep steps_sa wiggle_sa base_seed skew_setting S_v C_v rep_v r2_v mae_v wmae_v rmse_v wrmse_v meanKL_v r2Q0_v maeQ0_v wmaeQ0_v rmseQ0_v wrmseQ0_v meanKLQ0_v 
 
 ###############################################################################
 # build DataFrame, dropping the NaN rows
@@ -166,7 +165,13 @@ df     = DataFrame(S = S_v,
                   WMAE = wmae_v,
                   RMSE = rmse_v,
                   WRMSE = wrmse_v,
-                  meanKL = meanKL_v);
+                  meanKL = meanKL_v,
+                  R2Q0 = r2Q0_v,
+                  MAEQ0 = maeQ0_v,
+                  WMAEQ0 = wmaeQ0_v,
+                  RMSEQ0 = rmseQ0_v,
+                  WRMSEQ0 = wrmseQ0_v,
+                  meanKLQ0 = meanKLQ0_v,);
 
 
 df_summary = combine(
@@ -193,12 +198,74 @@ df_summary = combine(
   # meanKL: same pattern
   :meanKL=> (x -> mean(filter(!ismissing,   x))) => :mean_KL,
   :meanKL=> (x -> std(filter(!ismissing,   x))) => :sd_KL,
-)
 
+  # R²: drop any non-finite values
+  :R2Q0    => (x -> mean(filter(isfinite,    x))) => :mean_R2Q0,
+  :R2Q0    => (x -> std(filter(isfinite,    x))) => :sd_R2Q0,
+
+  # MAE: drop any missing values
+  :MAEQ0   => (x -> mean(filter(!ismissing,   x))) => :mean_MAEQ0,
+  :MAEQ0   => (x -> std(filter(!ismissing,   x))) => :sd_MAEQ0,
+
+  :WMAEQ0   => (x -> mean(filter(!ismissing,   x))) => :mean_WMAEQ0,
+  :WMAEQ0   => (x -> std(filter(!ismissing,   x))) => :sd_WMAEQ0,
+
+  # RMSE: same as MAE
+  :RMSEQ0  => (x -> mean(filter(!ismissing,   x))) => :mean_RMSEQ0,
+  :RMSEQ0  => (x -> std(filter(!ismissing,   x))) => :sd_RMSEQ0,
+
+  :WRMSEQ0  => (x -> mean(filter(!ismissing,   x))) => :mean_WRMSEQ0,
+  :WRMSEQ0  => (x -> std(filter(!ismissing,   x))) => :sd_WRMSEQ0,
+
+  # meanKL: same pattern
+  :meanKLQ0=> (x -> mean(filter(!ismissing,   x))) => :mean_KLQ0,
+  :meanKLQ0=> (x -> std(filter(!ismissing,   x))) => :sd_KLQ0,
+)
 
 
 println("\nMean ± SD of R² on UNKNOWN links")
 show(df_summary, allrows = true, allcols = true)
+
+
+RMSEratio = df_summary.mean_RMSE ./ df_summary.mean_RMSEQ0
+df_sub = DataFrame(S = df_summary.S, C = df_summary.C, RMSEratio = RMSEratio)
+
+# 1.  Extract sorted, unique axis values
+Svals = sort(unique(df_sub.S))          # e.g. [25, 30, …, 100]
+Cvals = sort(unique(df_sub.C))          # e.g. [0.02, 0.04, …, 0.20]
+# 2.  Pivot (C as rows, S as columns) – unstack does the heavy lifting
+wide = unstack(df_sub, :C, :S, :RMSEratio)
+scol_syms   = Symbol.(string.(Svals))              #  :”25” :”30” … :”100”
+wide_sorted = select(wide, [:C; scol_syms]...)     # keep :C first, rest in order
+# 3.  Convert everything except the first column (C) to a matrix
+mat = Matrix(wide_sorted[:, Not(:C)])
+
+# 4.  Plot – the length of Cvals must equal size(mat,1) and Svals size(mat,2)
+plt = Plots.heatmap(
+   string.(Svals),          # x tick labels  – matches matrix columns
+    string.(Cvals),          # y tick labels  – matches matrix rows
+    mat,                       # z-value matrix
+    xlabel = "Species, S",
+    ylabel = "Connectance, C",
+    colorbar_title = "RMSE ratio",
+    title = "RMSE ratio across (S, C)",
+    aspect_ratio = :equal,     # square cells
+    c = :viridis               # any palette you like
+)
+# 2. overlay contour where value == 1
+contour!(
+    plt,
+    string.(Svals),          # x tick labels  – matches matrix columns
+    string.(Cvals), mat;
+    levels = [1.0],          # draw only the z = 1 isopleth
+    linewidth = 2,
+    linecolor = :white,      # or :black, :red, etc.
+    linestyle = :solid
+)
+
+display(plt)
+
+
 
 ###############################################################################
 # plot three curves with UnicodePlots
